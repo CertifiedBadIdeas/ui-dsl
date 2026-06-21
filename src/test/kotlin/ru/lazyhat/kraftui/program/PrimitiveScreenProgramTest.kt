@@ -1,7 +1,6 @@
 package ru.lazyhat.kraftui.program
 
 import ru.lazyhat.kraftui.foundation.Color
-import ru.lazyhat.kraftui.foundation.GeneratedValueExpression
 import ru.lazyhat.kraftui.foundation.modifier.Modifier
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.background
@@ -58,7 +57,7 @@ class PrimitiveScreenProgramTest {
                             y = 3,
                             width = 50,
                             height = 20,
-                            color = GeneratedValueExpression.Constant(Color.Blue),
+                            color = PrimitiveValueExpression.Constant(Color.Blue),
                         ),
                 ),
                 PrimitiveRenderInstruction(
@@ -71,8 +70,8 @@ class PrimitiveScreenProgramTest {
                             y = 3,
                             width = 50,
                             height = 20,
-                            text = GeneratedValueExpression.StateField("title"),
-                            color = GeneratedValueExpression.Constant(Color.White),
+                            text = PrimitiveValueExpression.StateField("title"),
+                            color = PrimitiveValueExpression.Constant(Color.White),
                         ),
                 ),
             ),
@@ -88,10 +87,17 @@ class PrimitiveScreenProgramTest {
                     y = 3,
                     width = 50,
                     height = 20,
-                    action = GeneratedValueExpression.StateField("action"),
+                    action = PrimitiveValueExpression.StateField("action"),
                 ),
             ),
             primitive.inputInstructions,
+        )
+        assertEquals(
+            PrimitiveProgramDependencies(
+                dynamicValue = true,
+                dynamicInput = true,
+            ),
+            primitive.dependencies,
         )
     }
 
@@ -153,8 +159,8 @@ class PrimitiveScreenProgramTest {
                     backend = it,
                     resolve = { expression ->
                         when (expression) {
-                            is GeneratedValueExpression.Constant -> expression.value
-                            is GeneratedValueExpression.StateField ->
+                            is PrimitiveValueExpression.Constant -> expression.value
+                            is PrimitiveValueExpression.StateField ->
                                 when (expression.fieldName) {
                                     "title" -> state.title
                                     "origin" -> state.origin
@@ -175,8 +181,8 @@ class PrimitiveScreenProgramTest {
                     backend = it,
                     resolve = { expression ->
                         when (expression) {
-                            is GeneratedValueExpression.Constant -> expression.value
-                            is GeneratedValueExpression.StateField ->
+                            is PrimitiveValueExpression.Constant -> expression.value
+                            is PrimitiveValueExpression.StateField ->
                                 when (expression.fieldName) {
                                     "title" -> state.title
                                     "origin" -> state.origin

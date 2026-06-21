@@ -1,7 +1,6 @@
 package ru.lazyhat.kraftui.program
 
 import ru.lazyhat.kraftui.foundation.Color
-import ru.lazyhat.kraftui.foundation.GeneratedValueExpression
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
 import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
@@ -351,16 +350,16 @@ private fun StringBuilder.appendMinecraftHelpers() {
     appendLine("    }")
 }
 
-private fun GeneratedValueExpression.kotlinExpression(): String =
+private fun PrimitiveValueExpression.kotlinExpression(): String =
     when (this) {
-        is GeneratedValueExpression.Constant -> value.kotlinLiteral()
-        is GeneratedValueExpression.StateField -> "state.$fieldName"
+        is PrimitiveValueExpression.Constant -> value.kotlinLiteral()
+        is PrimitiveValueExpression.StateField -> "state.$fieldName"
     }
 
-private fun GeneratedValueExpression.minecraftColorExpression(): String =
+private fun PrimitiveValueExpression.minecraftColorExpression(): String =
     when (this) {
-        is GeneratedValueExpression.Constant -> value.minecraftColorLiteral()
-        is GeneratedValueExpression.StateField -> "state.$fieldName"
+        is PrimitiveValueExpression.Constant -> value.minecraftColorLiteral()
+        is PrimitiveValueExpression.StateField -> "state.$fieldName"
     }
 
 private fun Any?.kotlinLiteral(): String =
