@@ -66,17 +66,18 @@ fun PrimitiveScreenProgram.generateMinecraftScreenSource(
 
 private fun PrimitiveScreenProgram.rejectUnsupportedMinecraftOps() {
     val unsupported =
-        renderInstructions.mapNotNull { instruction ->
-            when (instruction.op) {
-                is PrimitiveRenderOp.DrawTerminalSurface -> "${instruction.path}: DrawTerminalSurface"
-                is PrimitiveRenderOp.DrawCodeEditor -> "${instruction.path}: DrawCodeEditor"
-                else -> null
-            }
-        }
+        analyze(
+            options =
+                PrimitiveProgramAnalysisOptions(
+                    target = PrimitiveTargetCapabilities.minecraftGuiGraphics,
+                ),
+        ).diagnostics.filterIsInstance<PrimitiveProgramDiagnostic.UnsupportedTargetOperation>()
     require(unsupported.isEmpty()) {
         "Minecraft target cannot generate unsupported primitive operations:\n" +
-            unsupported.joinToString(separator = "\n")
-    }
+            unsupported.joinToString(separator = "\n") {
+                "${it.path}: ${it.operation}"
+            }
+        }
 }
 
 private fun StringBuilder.appendMinecraftRenderInstruction(

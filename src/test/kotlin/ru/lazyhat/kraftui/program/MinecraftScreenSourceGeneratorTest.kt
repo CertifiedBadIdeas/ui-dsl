@@ -10,6 +10,7 @@ import ru.lazyhat.kraftui.foundation.stateValue
 import ru.lazyhat.kraftui.foundation.uiActions
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -101,5 +102,47 @@ class MinecraftScreenSourceGeneratorTest {
         assertTrue("if (state.visible) {" in generated.source)
         assertTrue("graphics.fill(20, 2, 30, 12, 0xFF0000FF.toInt())" in generated.source)
         assertFalse("if (!state.visible) return" in generated.source)
+    }
+
+    @Test
+    fun minecraftSourceRejectsUnsupportedTargetOperationsThroughAnalysis() {
+        val primitive =
+            PrimitiveScreenProgram(
+                renderInstructions =
+                    listOf(
+                        PrimitiveRenderInstruction(
+                            path = "editor",
+                            visible = null,
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.DrawCodeEditor(
+                                    x = 0,
+                                    y = 0,
+                                    width = 10,
+                                    height = 10,
+                                    viewModel = PrimitiveValueExpression.StateField("editor"),
+                                    fontWidth = 6,
+                                    fontHeight = 9,
+                                ),
+                        ),
+                    ),
+                inputInstructions = emptyList(),
+            )
+
+        val failure =
+            assertFailsWith<IllegalArgumentException> {
+                primitive.generateMinecraftScreenSource(
+                    packageName = "ru.lazyhat.generated",
+                    className = "GeneratedMinecraftScreen",
+                    stateType = "ScreenState",
+                    actionType = "TestAction",
+                )
+            }
+
+        assertEquals(
+            "Minecraft target cannot generate unsupported primitive operations:\n" +
+                "editor: DrawCodeEditor",
+            failure.message,
+        )
     }
 }
