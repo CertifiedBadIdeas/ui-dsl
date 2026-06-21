@@ -70,7 +70,8 @@ class MinecraftScreenSourceGeneratorTest {
         assertTrue("val font2 = Minecraft.getInstance().font" in generated.source)
         assertTrue("drawText(graphics, font2, state.title, 0 + ox2, 0 + oy2, 50, 20, 0xFFFFFFFF.toInt(), TextAlignment.Start, TextOverflowPolicy.FailInValidation, false, null, 9)" in generated.source)
         assertTrue("fun mouseClicked(state: ScreenState, x: Int, y: Int): TestAction?" in generated.source)
-        assertTrue("return state.action" in generated.source)
+        assertTrue("return hitRegionAction(state, region.id)" in generated.source)
+        assertTrue("0 -> state.action" in generated.source)
         assertFalse("RenderBackend" in generated.source)
         assertFalse("PrimitiveScreenProgram" in generated.source)
         assertFalse("GeneratedValueExpression" in generated.source)
@@ -148,6 +149,103 @@ class MinecraftScreenSourceGeneratorTest {
     }
 
     @Test
+    fun minecraftSourceGroupsConsecutiveVisibilityBlocks() {
+        val primitive =
+            PrimitiveScreenProgram(
+                renderInstructions =
+                    listOf(
+                        PrimitiveRenderInstruction(
+                            path = "overview/background",
+                            visible = PrimitiveValueExpression.StateField("overviewVisible"),
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.FillRect(
+                                    x = 0,
+                                    y = 0,
+                                    width = 20,
+                                    height = 20,
+                                    color = PrimitiveValueExpression.Constant(Color.Blue),
+                                ),
+                        ),
+                        PrimitiveRenderInstruction(
+                            path = "overview/title",
+                            visible = PrimitiveValueExpression.StateField("overviewVisible"),
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.DrawText(
+                                    x = 0,
+                                    y = 0,
+                                    width = 20,
+                                    height = 9,
+                                    text = PrimitiveValueExpression.StateField("title"),
+                                    color = PrimitiveValueExpression.Constant(Color.White),
+                                ),
+                        ),
+                    ),
+                inputInstructions = emptyList(),
+            )
+
+        val generated =
+            primitive.generateMinecraftScreenSource(
+                packageName = "ru.lazyhat.generated",
+                className = "GeneratedMinecraftScreen",
+                stateType = "ScreenState",
+                actionType = "TestAction",
+            )
+
+        assertEquals(1, generated.source.countOccurrences("if (state.overviewVisible) {"))
+        assertTrue("graphics.fill(0, 0, 20, 20, 0xFF0000FF.toInt())" in generated.source)
+        assertTrue("drawText(graphics" in generated.source)
+    }
+
+    @Test
+    fun minecraftSourceUsesPrecomputedHitRegions() {
+        val primitive =
+            PrimitiveScreenProgram(
+                renderInstructions = emptyList(),
+                inputInstructions =
+                    listOf(
+                        PrimitiveInputInstruction.ClickRegion(
+                            path = "front",
+                            visible = null,
+                            origin = null,
+                            x = 20,
+                            y = 0,
+                            width = 20,
+                            height = 20,
+                            action = PrimitiveValueExpression.Constant("open"),
+                        ),
+                        PrimitiveInputInstruction.ClickRegion(
+                            path = "back",
+                            visible = PrimitiveValueExpression.StateField("visible"),
+                            origin = PrimitiveValueExpression.StateField("origin"),
+                            x = 0,
+                            y = 0,
+                            width = 20,
+                            height = 20,
+                            action = PrimitiveValueExpression.StateField("action"),
+                        ),
+                    ),
+            )
+
+        val generated =
+            primitive.generateMinecraftScreenSource(
+                packageName = "ru.lazyhat.generated",
+                className = "GeneratedMinecraftScreen",
+                stateType = "ScreenState",
+                actionType = "String",
+            )
+
+        assertTrue("private val hitRegions = arrayOf(" in generated.source)
+        assertTrue("HitRegion(id = 0, x = 20, y = 0, width = 20, height = 20)" in generated.source)
+        assertTrue("HitRegion(id = 1, x = 0, y = 0, width = 20, height = 20)" in generated.source)
+        assertTrue("for (region in hitRegions) {" in generated.source)
+        assertTrue("when (id) {" in generated.source)
+        assertTrue("0 -> \"open\"" in generated.source)
+        assertTrue("1 -> state.action" in generated.source)
+    }
+
+    @Test
     fun minecraftSourceRejectsUnsupportedTargetOperationsThroughAnalysis() {
         val primitive =
             PrimitiveScreenProgram(
@@ -188,4 +286,7 @@ class MinecraftScreenSourceGeneratorTest {
             failure.message,
         )
     }
+
+    private fun String.countOccurrences(value: String): Int =
+        split(value).size - 1
 }

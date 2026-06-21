@@ -40,12 +40,11 @@ fun PrimitiveScreenProgram.generateMinecraftScreenSource(
             appendLine("            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<TextLayoutKey, List<TextLine>>): Boolean =")
             appendLine("                size > 256")
             appendLine("        }")
+            appendMinecraftHitRegions(inputInstructions)
             appendLine()
             appendLine("    fun render(graphics: GuiGraphics, state: $stateType) {")
             appendLine("        clipStack.clear()")
-            renderInstructions.forEachIndexed { index, instruction ->
-                appendMinecraftRenderInstruction(index, instruction)
-            }
+            appendMinecraftRenderInstructions(renderInstructions)
             appendLine("        if (clipStack.isNotEmpty()) {")
             appendLine("            graphics.disableScissor()")
             appendLine("            clipStack.clear()")
@@ -57,11 +56,10 @@ fun PrimitiveScreenProgram.generateMinecraftScreenSource(
             appendLine("    }")
             appendLine()
             appendLine("    fun mouseClicked(state: $stateType, x: Int, y: Int): $actionType? {")
-            inputInstructions.forEachIndexed { index, instruction ->
-                appendMinecraftInputInstruction(index, instruction)
-            }
+            appendMinecraftInputInstructions(inputInstructions)
             appendLine("        return null")
             appendLine("    }")
+            appendMinecraftInputHelpers(stateType, actionType, inputInstructions)
             appendMinecraftHelpers()
             appendLine("}")
         }
@@ -89,26 +87,63 @@ private fun PrimitiveScreenProgram.rejectUnsupportedMinecraftOps() {
         }
 }
 
-private fun StringBuilder.appendMinecraftRenderInstruction(
+private fun StringBuilder.appendMinecraftHitRegions(inputInstructions: List<PrimitiveInputInstruction>) {
+    val regions = inputInstructions.filterIsInstance<PrimitiveInputInstruction.ClickRegion>()
+    if (regions.isEmpty()) {
+        appendLine("    private val hitRegions = arrayOf<HitRegion>()")
+        return
+    }
+    appendLine("    private val hitRegions = arrayOf(")
+    regions.forEachIndexed { index, region ->
+        appendLine(
+            "        HitRegion(id = $index, x = ${region.x}, y = ${region.y}, width = ${region.width}, height = ${region.height}),",
+        )
+    }
+    appendLine("    )")
+}
+
+private fun StringBuilder.appendMinecraftRenderInstructions(instructions: List<PrimitiveRenderInstruction>) {
+    var index = 0
+    while (index < instructions.size) {
+        val visible = instructions[index].visible
+        val end = instructions.nextDifferentVisibilityIndex(index)
+        val indent =
+            if (visible != null) {
+                appendLine("        if (${visible.kotlinExpression()}) {")
+                "            "
+            } else {
+                "        "
+            }
+        for (instructionIndex in index until end) {
+            appendMinecraftRenderInstructionBody(instructionIndex, instructions[instructionIndex], indent)
+        }
+        if (visible != null) {
+            appendLine("        }")
+        }
+        index = end
+    }
+}
+
+private fun List<PrimitiveRenderInstruction>.nextDifferentVisibilityIndex(start: Int): Int {
+    val visible = this[start].visible
+    var index = start + 1
+    while (index < size && this[index].visible == visible) {
+        index++
+    }
+    return index
+}
+
+private fun StringBuilder.appendMinecraftRenderInstructionBody(
     index: Int,
     instruction: PrimitiveRenderInstruction,
+    indent: String,
 ) {
-    val indent =
-        if (instruction.visible != null) {
-            appendLine("        if (${instruction.visible.kotlinExpression()}) {")
-            "            "
-        } else {
-            "        "
-        }
     if (instruction.origin != null) {
         appendLine("${indent}val origin$index = ${instruction.origin.kotlinExpression()}")
         appendLine("${indent}val ox$index = origin$index.x")
         appendLine("${indent}val oy$index = origin$index.y")
     }
     appendMinecraftRenderOp(index, instruction.origin != null, instruction.op, indent)
-    if (instruction.visible != null) {
-        appendLine("        }")
-    }
 }
 
 private fun StringBuilder.appendMinecraftRenderOp(
@@ -152,35 +187,59 @@ private fun StringBuilder.appendMinecraftDrawText(
     )
 }
 
-private fun StringBuilder.appendMinecraftInputInstruction(
-    index: Int,
-    instruction: PrimitiveInputInstruction,
+private fun StringBuilder.appendMinecraftInputInstructions(inputInstructions: List<PrimitiveInputInstruction>) {
+    val regions = inputInstructions.filterIsInstance<PrimitiveInputInstruction.ClickRegion>()
+    if (regions.isEmpty()) return
+    appendLine("        for (region in hitRegions) {")
+    appendLine("            if (!isHitRegionVisible(state, region.id)) continue")
+    appendLine("            val left = region.x + hitRegionOriginX(state, region.id)")
+    appendLine("            val top = region.y + hitRegionOriginY(state, region.id)")
+    appendLine("            if (x >= left && y >= top && x < left + region.width && y < top + region.height) {")
+    appendLine("                return hitRegionAction(state, region.id)")
+    appendLine("            }")
+    appendLine("        }")
+    appendLine()
+}
+
+private fun StringBuilder.appendMinecraftInputHelpers(
+    stateType: String,
+    actionType: String,
+    inputInstructions: List<PrimitiveInputInstruction>,
 ) {
-    when (instruction) {
-        is PrimitiveInputInstruction.ClickRegion -> {
-            instruction.visible?.let {
-                appendLine("        if (${it.kotlinExpression()}) {")
-            }
-            val indent = if (instruction.visible != null) "            " else "        "
-            if (instruction.origin != null) {
-                appendLine("${indent}val origin$index = ${instruction.origin.kotlinExpression()}")
-                appendLine("${indent}val ox$index = origin$index.x")
-                appendLine("${indent}val oy$index = origin$index.y")
-            }
-            val ox = if (instruction.origin != null) " + ox$index" else ""
-            val oy = if (instruction.origin != null) " + oy$index" else ""
-            appendLine("${indent}if (x >= ${instruction.x}$ox && y >= ${instruction.y}$oy && x < ${instruction.x}$ox + ${instruction.width} && y < ${instruction.y}$oy + ${instruction.height}) {")
-            if (instruction.action != null) {
-                appendLine("${indent}    return ${instruction.action.kotlinExpression()}")
-            } else {
-                appendLine("${indent}    return null")
-            }
-            appendLine("${indent}}")
-            if (instruction.visible != null) {
-                appendLine("        }")
-            }
-        }
+    val regions = inputInstructions.filterIsInstance<PrimitiveInputInstruction.ClickRegion>()
+    if (regions.isEmpty()) return
+    appendLine()
+    appendLine("    private fun isHitRegionVisible(state: $stateType, id: Int): Boolean =")
+    appendLine("        when (id) {")
+    regions.forEachIndexed { index, region ->
+        appendLine("            $index -> ${region.visible?.kotlinExpression() ?: "true"}")
     }
+    appendLine("            else -> false")
+    appendLine("        }")
+    appendLine()
+    appendLine("    private fun hitRegionOriginX(state: $stateType, id: Int): Int =")
+    appendLine("        when (id) {")
+    regions.forEachIndexed { index, region ->
+        appendLine("            $index -> ${region.origin?.componentExpression("x") ?: "0"}")
+    }
+    appendLine("            else -> 0")
+    appendLine("        }")
+    appendLine()
+    appendLine("    private fun hitRegionOriginY(state: $stateType, id: Int): Int =")
+    appendLine("        when (id) {")
+    regions.forEachIndexed { index, region ->
+        appendLine("            $index -> ${region.origin?.componentExpression("y") ?: "0"}")
+    }
+    appendLine("            else -> 0")
+    appendLine("        }")
+    appendLine()
+    appendLine("    private fun hitRegionAction(state: $stateType, id: Int): $actionType? =")
+    appendLine("        when (id) {")
+    regions.forEachIndexed { index, region ->
+        appendLine("            $index -> ${region.action?.kotlinExpression() ?: "null"}")
+    }
+    appendLine("            else -> null")
+    appendLine("        }")
 }
 
 private fun StringBuilder.appendMinecraftHelpers() {
@@ -362,9 +421,22 @@ private fun StringBuilder.appendMinecraftHelpers() {
     appendLine("            )")
     appendLine("    }")
     appendLine()
+    appendLine("    private data class Position(")
+    appendLine("        val x: Int,")
+    appendLine("        val y: Int,")
+    appendLine("    )")
+    appendLine()
     appendLine("    private data class TextLine(")
     appendLine("        val text: String,")
     appendLine("        val width: Int,")
+    appendLine("    )")
+    appendLine()
+    appendLine("    private data class HitRegion(")
+    appendLine("        val id: Int,")
+    appendLine("        val x: Int,")
+    appendLine("        val y: Int,")
+    appendLine("        val width: Int,")
+    appendLine("        val height: Int,")
     appendLine("    )")
     appendLine()
     appendLine("    private data class TextLayoutKey(")
@@ -395,6 +467,12 @@ private fun PrimitiveValueExpression.kotlinExpression(): String =
     when (this) {
         is PrimitiveValueExpression.Constant -> value.kotlinLiteral()
         is PrimitiveValueExpression.StateField -> "state.$fieldName"
+    }
+
+private fun PrimitiveValueExpression.componentExpression(component: String): String =
+    when (this) {
+        is PrimitiveValueExpression.Constant -> "${value.kotlinLiteral()}.$component"
+        is PrimitiveValueExpression.StateField -> "state.$fieldName.$component"
     }
 
 private fun PrimitiveValueExpression.minecraftColorExpression(): String =
