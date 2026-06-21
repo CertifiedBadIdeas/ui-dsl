@@ -4,12 +4,16 @@ import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.modifier.Modifier
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
+import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
+import ru.lazyhat.kraftui.foundation.modifier.TextWrapPolicy
 import ru.lazyhat.kraftui.foundation.modifier.background
 import ru.lazyhat.kraftui.foundation.modifier.draggable
 import ru.lazyhat.kraftui.foundation.modifier.focusable
 import ru.lazyhat.kraftui.foundation.modifier.offset
 import ru.lazyhat.kraftui.foundation.modifier.size
 import ru.lazyhat.kraftui.foundation.modifier.textAlign
+import ru.lazyhat.kraftui.foundation.modifier.textFlow
+import ru.lazyhat.kraftui.foundation.modifier.textOverflow
 import ru.lazyhat.kraftui.foundation.modifier.width
 import ru.lazyhat.kraftui.foundation.modifier.zIndex
 import ru.lazyhat.kraftui.foundation.tickValue
@@ -252,6 +256,37 @@ class ScreenRuntimeExecutorTest {
         val second = RecordingBackend()
         executor.render(second)
         assertEquals(12, second.drawTexts.single().x)
+    }
+
+    @Test
+    fun runtimeWrapsTextAndEllipsizesLastVisibleLine() {
+        val program =
+            ScreenProgramCompiler().compile(
+                ui(Modifier.size(30, 18)) {
+                    text(
+                        modifier =
+                            Modifier
+                                .size(30, 18)
+                                .textFlow(wrap = TextWrapPolicy.WordWrap, lineHeight = 9)
+                                .textOverflow(TextOverflowPolicy.Ellipsize),
+                    ) {
+                        "alpha beta gamma"
+                    }
+                },
+                rootWidth = 30,
+                rootHeight = 18,
+            )
+        val backend = RecordingBackend()
+
+        ScreenRuntimeExecutor(program).render(backend)
+
+        assertEquals(
+            listOf(
+                RecordingBackend.DrawTextCall(0, 0, "alpha"),
+                RecordingBackend.DrawTextCall(0, 9, "be..."),
+            ),
+            backend.drawTexts,
+        )
     }
 
     private class RecordingBackend : RenderBackend {

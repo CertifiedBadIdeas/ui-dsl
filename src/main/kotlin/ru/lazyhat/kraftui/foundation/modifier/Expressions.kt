@@ -151,6 +151,32 @@ fun Modifier.findTextOverflow() = find<TextOverflowModifier>()
 
 //
 
+enum class TextWrapPolicy {
+    NoWrap,
+    WordWrap,
+}
+
+data class TextFlowModifier(
+    val wrap: TextWrapPolicy,
+    val maxLines: Int?,
+    val lineHeight: Int,
+) : Modifier.Element {
+    init {
+        require(maxLines == null || maxLines > 0) { "text maxLines must be positive" }
+        require(lineHeight > 0) { "text lineHeight must be positive" }
+    }
+}
+
+fun Modifier.textFlow(
+    wrap: TextWrapPolicy = TextWrapPolicy.NoWrap,
+    maxLines: Int? = null,
+    lineHeight: Int = 9,
+): Modifier = then(TextFlowModifier(wrap, maxLines, lineHeight))
+
+fun Modifier.findTextFlow() = find<TextFlowModifier>()
+
+//
+
 data class BackgroundModifier(
     val color: Color,
 ) : Modifier.Element

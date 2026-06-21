@@ -5,12 +5,18 @@ import ru.lazyhat.kraftui.foundation.modifier.Modifier
 import ru.lazyhat.kraftui.foundation.modifier.background
 import ru.lazyhat.kraftui.foundation.modifier.size
 import ru.lazyhat.kraftui.foundation.ui
+import java.nio.file.Files
+import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import org.junit.jupiter.api.io.TempDir
 
 class UiPreviewRendererTest {
     private val font = FixedPreviewFont()
+
+    @TempDir
+    lateinit var tempDir: Path
 
     @Test
     fun renderDrawsUiElementIntoImage() {
@@ -49,6 +55,35 @@ class UiPreviewRendererTest {
         assertTrue("overflow" in error.message.orEmpty())
         assertTrue("text overflow" in error.message.orEmpty())
         assertTrue("text width 48 px, available 8 px" in error.message.orEmpty())
+    }
+
+    @Test
+    fun renderAllWritesImageAndDiagnosticReportBeforeFailing() {
+        val error =
+            assertFailsWith<IllegalStateException> {
+                UiPreviewRenderer(font)
+                    .renderAll(
+                        listOf(
+                            UiPreviewSpec(
+                                id = "overflow",
+                                width = 12,
+                                height = 12,
+                                root =
+                                    ui(Modifier.size(12, 12)) {
+                                        text("too wide", modifier = Modifier.size(8, 9))
+                                    },
+                            ),
+                        ),
+                        tempDir,
+                    )
+            }
+
+        val image = tempDir.resolve("overflow.png")
+        val report = tempDir.resolve("overflow.diagnostics.txt")
+        assertTrue(Files.isRegularFile(image))
+        assertTrue(Files.isRegularFile(report))
+        assertTrue("overflow.diagnostics.txt" in error.message.orEmpty())
+        assertTrue("root-0: text overflow" in Files.readString(report))
     }
 
     private class FixedPreviewFont : PreviewFont {

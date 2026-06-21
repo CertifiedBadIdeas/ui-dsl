@@ -5,7 +5,6 @@ import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.TickContext
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
-import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
 
 /**
  * Runtime-side counterpart to [ScreenProgram].
@@ -150,24 +149,33 @@ class ScreenRuntimeExecutor(
 
                     is RenderOp.DrawText -> {
                         val text = op.value.value
-                        val renderedText = text.renderWithOverflow(op.width, op.overflow, backend)
-                        val textWidth = backend.measureText(renderedText)
-                        val textX =
-                            when (op.alignment) {
-                                TextAlignment.Start -> op.x
-                                TextAlignment.Center -> op.x + (op.width - textWidth) / 2
-                                TextAlignment.End -> op.x + op.width - textWidth
+                        val visibleLineCount = (op.height / op.flow.lineHeight).coerceAtLeast(0)
+                        val effectiveMaxLines =
+                            when {
+                                visibleLineCount == 0 -> 0
+                                op.flow.maxLines == null -> visibleLineCount
+                                else -> minOf(op.flow.maxLines, visibleLineCount)
                             }
-                        when (op.overflow) {
-                            TextOverflowPolicy.Clip -> {
-                                backend.pushClip(op.x + ox, op.y + oy, op.width, DEFAULT_TEXT_HEIGHT)
-                                backend.drawText(textX + ox, op.y + oy, renderedText, op.color.value)
-                                backend.popClip()
-                            }
-                            TextOverflowPolicy.FailInValidation,
-                            TextOverflowPolicy.Ellipsize,
-                            -> backend.drawText(textX + ox, op.y + oy, renderedText, op.color.value)
+                        val runtimeFlow = op.flow.copy(maxLines = effectiveMaxLines.coerceAtLeast(1))
+                        val textLayout =
+                            TextLayouter(backend::measureText).layout(
+                                text = text,
+                                width = op.width,
+                                flow = runtimeFlow,
+                                overflow = op.overflow,
+                            )
+
+                        backend.pushClip(op.x + ox, op.y + oy, op.width, op.height)
+                        textLayout.lines.forEachIndexed { index, line ->
+                            val textX =
+                                when (op.alignment) {
+                                    TextAlignment.Start -> op.x
+                                    TextAlignment.Center -> op.x + (op.width - line.width) / 2
+                                    TextAlignment.End -> op.x + op.width - line.width
+                                }
+                            backend.drawText(textX + ox, op.y + oy + index * op.flow.lineHeight, line.text, op.color.value)
                         }
+                        backend.popClip()
                     }
 
                     is RenderOp.DrawTerminalSurface -> {
@@ -204,42 +212,6 @@ class ScreenRuntimeExecutor(
     }
 
     private val canvasScope = OffsetCanvasScope()
-
-    private fun String.renderWithOverflow(
-        width: Int,
-        policy: TextOverflowPolicy,
-        backend: RenderBackend,
-    ): String =
-        when (policy) {
-            TextOverflowPolicy.FailInValidation,
-            TextOverflowPolicy.Clip,
-            -> this
-            TextOverflowPolicy.Ellipsize -> ellipsize(width, backend)
-        }
-
-    private fun String.ellipsize(
-        width: Int,
-        backend: RenderBackend,
-    ): String {
-        if (backend.measureText(this) <= width) {
-            return this
-        }
-        if (width <= 0) {
-            return ""
-        }
-        var marker = "..."
-        while (marker.isNotEmpty() && backend.measureText(marker) > width) {
-            marker = marker.dropLast(1)
-        }
-        if (marker.isEmpty()) {
-            return ""
-        }
-        var end = length
-        while (end > 0 && backend.measureText(take(end) + marker) > width) {
-            end--
-        }
-        return take(end) + marker
-    }
 
     private class OffsetCanvasScope : CanvasScope {
         private var backend: RenderBackend? = null
@@ -427,8 +399,6 @@ class ScreenRuntimeExecutor(
     }
 
     private companion object {
-        const val DEFAULT_TEXT_HEIGHT = 9
-
         // GLFW key/modifier constants. Re-declared here to keep the runtime
         // independent of the GLFW dependency.
         const val KEY_TAB = 258

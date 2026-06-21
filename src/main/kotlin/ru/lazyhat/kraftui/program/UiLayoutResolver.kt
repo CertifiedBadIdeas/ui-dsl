@@ -14,8 +14,11 @@ import ru.lazyhat.kraftui.foundation.modifier.findHeight
 import ru.lazyhat.kraftui.foundation.modifier.findOffset
 import ru.lazyhat.kraftui.foundation.modifier.findPadding
 import ru.lazyhat.kraftui.foundation.modifier.findSize
+import ru.lazyhat.kraftui.foundation.modifier.findTextFlow
 import ru.lazyhat.kraftui.foundation.modifier.findWeight
 import ru.lazyhat.kraftui.foundation.modifier.findWidth
+import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
+import ru.lazyhat.kraftui.foundation.modifier.TextWrapPolicy
 
 /**
  * A resolved rectangle for a single UI node in some frame's coordinate space.
@@ -196,7 +199,7 @@ class UiLayoutResolver(
         if (element is UiElement.Overlay) return
 
         val width = forcedWidth ?: explicitOrIntrinsicWidth(element, parentWidth)
-        val height = forcedHeight ?: explicitOrIntrinsicHeight(element, parentHeight)
+        val height = forcedHeight ?: explicitOrIntrinsicHeight(element, parentHeight, width)
 
         val alignment = element.modifier.findAlignment()?.alignment
         val position = element.modifier.findOffset()?.position ?: Position.Zero
@@ -362,7 +365,7 @@ class UiLayoutResolver(
             val childHeight =
                 when (alignment) {
                     UiAlignment.Stretch -> contentHeight
-                    else -> explicitOrIntrinsicHeight(child, contentHeight)
+                    else -> explicitOrIntrinsicHeight(child, contentHeight, childWidth)
                 }
 
             resolveNode(
@@ -649,9 +652,10 @@ class UiLayoutResolver(
     private fun explicitOrIntrinsicHeight(
         element: UiElement,
         fallbackHeight: Int,
+        width: Int = fallbackHeight,
     ): Int =
         explicitHeight(element, fallbackHeight) ?: when (element) {
-            is UiElement.Text -> DEFAULT_TEXT_HEIGHT
+            is UiElement.Text -> intrinsicTextHeight(element, width)
             else -> fallbackHeight
         }
 
@@ -669,9 +673,31 @@ class UiLayoutResolver(
         parentHeight: Int,
     ): Int =
         explicitHeight(element, parentHeight) ?: when (element) {
-            is UiElement.Text -> DEFAULT_TEXT_HEIGHT
+            is UiElement.Text -> intrinsicTextHeight(element, explicitWidth(element, parentHeight) ?: parentHeight)
             else -> 0
         }
+
+    private fun intrinsicTextHeight(
+        element: UiElement.Text,
+        width: Int,
+    ): Int {
+        val flowModifier = element.modifier.findTextFlow()
+        val flow =
+            TextFlow(
+                wrap = flowModifier?.wrap ?: TextWrapPolicy.NoWrap,
+                maxLines = flowModifier?.maxLines,
+                lineHeight = flowModifier?.lineHeight ?: DEFAULT_TEXT_HEIGHT,
+            )
+        val metrics = fontMetrics ?: return flow.lineHeight
+        val layout =
+            TextLayouter(metrics::width).layout(
+                text = element.text.value,
+                width = width,
+                flow = flow,
+                overflow = TextOverflowPolicy.FailInValidation,
+            )
+        return layout.lines.size * flow.lineHeight
+    }
 
     private fun explicitWidth(
         element: UiElement,

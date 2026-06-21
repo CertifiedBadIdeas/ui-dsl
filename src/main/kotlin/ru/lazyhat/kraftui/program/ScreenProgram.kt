@@ -47,6 +47,15 @@ sealed interface ScreenProgramDiagnostic {
         val textWidth: Int,
         val policy: TextOverflowPolicy,
     ) : ScreenProgramDiagnostic
+
+    data class TextHeightWouldOverflow(
+        override val nodeId: String,
+        val text: String,
+        val height: Int,
+        val textHeight: Int,
+        val lineCount: Int,
+        val policy: TextOverflowPolicy,
+    ) : ScreenProgramDiagnostic
 }
 
 data class ScreenProgramDiagnosticReport(
@@ -64,6 +73,8 @@ data class ScreenProgramDiagnosticReport(
             is ScreenProgramDiagnostic.LayoutViolation -> diagnostic.asText()
             is ScreenProgramDiagnostic.TextWouldOverflow ->
                 "$nodeId: text overflow, text width $textWidth px, available $width px, policy $policy, text '$text'"
+            is ScreenProgramDiagnostic.TextHeightWouldOverflow ->
+                "$nodeId: text height overflow, text height $textHeight px across $lineCount lines, available $height px, policy $policy, text '$text'"
         }
 
     private fun LayoutDiagnostic.asText(): String =
@@ -150,10 +161,12 @@ sealed interface RenderOp {
         val x: Int,
         val y: Int,
         val width: Int,
+        val height: Int,
         val value: Value<String>,
         val color: Value<Color>,
         val alignment: TextAlignment,
         val overflow: TextOverflowPolicy = TextOverflowPolicy.FailInValidation,
+        val flow: TextFlow = TextFlow(),
     ) : RenderOp
 
     data class DrawTerminalSurface(

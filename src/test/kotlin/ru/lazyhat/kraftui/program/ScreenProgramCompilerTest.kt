@@ -4,6 +4,7 @@ import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.HoverState
 import ru.lazyhat.kraftui.foundation.modifier.Modifier
 import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
+import ru.lazyhat.kraftui.foundation.modifier.TextWrapPolicy
 import ru.lazyhat.kraftui.foundation.modifier.UiAlignment
 import ru.lazyhat.kraftui.foundation.modifier.align
 import ru.lazyhat.kraftui.foundation.modifier.background
@@ -12,6 +13,7 @@ import ru.lazyhat.kraftui.foundation.modifier.hoverable
 import ru.lazyhat.kraftui.foundation.modifier.offset
 import ru.lazyhat.kraftui.foundation.modifier.padding
 import ru.lazyhat.kraftui.foundation.modifier.size
+import ru.lazyhat.kraftui.foundation.modifier.textFlow
 import ru.lazyhat.kraftui.foundation.modifier.textOverflow
 import ru.lazyhat.kraftui.foundation.modifier.tooltip
 import ru.lazyhat.kraftui.foundation.ui
@@ -269,6 +271,28 @@ class ScreenProgramCompilerTest {
         assertEquals(20, diagnostic.width)
         assertEquals(48, diagnostic.textWidth)
         assertEquals(TextOverflowPolicy.FailInValidation, diagnostic.policy)
+    }
+
+    @Test
+    fun compileReportsWrappedTextHeightOverflowWhenPolicyRequiresValidationFailure() {
+        val program =
+            ScreenProgramCompiler(fontMetrics = fontMetrics).compile(
+                ui(Modifier.size(30, 18)) {
+                    text(
+                        modifier =
+                            Modifier
+                                .size(30, 18)
+                                .textFlow(wrap = TextWrapPolicy.WordWrap, lineHeight = 9),
+                        text = value { "alpha beta gamma" },
+                    )
+                },
+            )
+
+        val diagnostic = program.diagnostics.single() as ScreenProgramDiagnostic.TextHeightWouldOverflow
+        assertEquals("root-0", diagnostic.nodeId)
+        assertEquals(18, diagnostic.height)
+        assertEquals(27, diagnostic.textHeight)
+        assertEquals(3, diagnostic.lineCount)
     }
 
     @Test

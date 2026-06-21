@@ -11,6 +11,7 @@ import ru.lazyhat.kraftui.foundation.modifier.findFocusable
 import ru.lazyhat.kraftui.foundation.modifier.findHoverable
 import ru.lazyhat.kraftui.foundation.modifier.findSize
 import ru.lazyhat.kraftui.foundation.modifier.findTextAlignment
+import ru.lazyhat.kraftui.foundation.modifier.findTextFlow
 import ru.lazyhat.kraftui.foundation.modifier.findTextOverflow
 import ru.lazyhat.kraftui.foundation.modifier.findTooltip
 import ru.lazyhat.kraftui.foundation.modifier.findZIndex
@@ -275,28 +276,56 @@ class ScreenProgramCompiler(
 
             is UiElement.Text -> {
                 val overflow = element.modifier.findTextOverflow()?.policy ?: TextOverflowPolicy.FailInValidation
+                val flowModifier = element.modifier.findTextFlow()
+                val flow =
+                    TextFlow(
+                        wrap = flowModifier?.wrap ?: ru.lazyhat.kraftui.foundation.modifier.TextWrapPolicy.NoWrap,
+                        maxLines = flowModifier?.maxLines,
+                        lineHeight = flowModifier?.lineHeight ?: DEFAULT_TEXT_HEIGHT,
+                    )
                 val metrics = fontMetrics
                 val text = metrics?.let { element.text.value }
-                val textWidth = if (metrics == null || text == null) null else metrics.width(text)
-                if (overflow == TextOverflowPolicy.FailInValidation && text != null && textWidth != null && textWidth > node.width) {
-                    diagnostics +=
-                        ScreenProgramDiagnostic.TextWouldOverflow(
-                            nodeId = nodeId,
+                if (overflow == TextOverflowPolicy.FailInValidation && metrics != null && text != null) {
+                    val textLayout =
+                        TextLayouter(metrics::width).layout(
                             text = text,
                             width = node.width,
-                            textWidth = textWidth,
-                            policy = overflow,
+                            flow = flow,
+                            overflow = overflow,
                         )
+                    textLayout.lines.firstOrNull { it.width > node.width }?.let { line ->
+                        diagnostics +=
+                            ScreenProgramDiagnostic.TextWouldOverflow(
+                                nodeId = nodeId,
+                                text = line.text,
+                                width = node.width,
+                                textWidth = line.width,
+                                policy = overflow,
+                            )
+                    }
+                    if (textLayout.requiredHeight > node.height) {
+                        diagnostics +=
+                            ScreenProgramDiagnostic.TextHeightWouldOverflow(
+                                nodeId = nodeId,
+                                text = text,
+                                height = node.height,
+                                textHeight = textLayout.requiredHeight,
+                                lineCount = textLayout.sourceLineCount,
+                                policy = overflow,
+                            )
+                    }
                 }
                 ops +=
                     RenderOp.DrawText(
                         x = node.x,
                         y = node.y,
                         width = node.width,
+                        height = node.height,
                         value = element.text,
                         color = element.color,
                         alignment = element.modifier.findTextAlignment()?.alignment ?: TextAlignment.Start,
                         overflow = overflow,
+                        flow = flow,
                     )
             }
 
@@ -664,5 +693,9 @@ class ScreenProgramCompiler(
             prevWidth = w
         }
         return lineText.length
+    }
+
+    private companion object {
+        const val DEFAULT_TEXT_HEIGHT = 9
     }
 }
