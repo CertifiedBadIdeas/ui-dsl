@@ -105,6 +105,49 @@ class MinecraftScreenSourceGeneratorTest {
     }
 
     @Test
+    fun minecraftSourceGeneratesBoundedTextLayoutCacheInsideGeneratedClass() {
+        val primitive =
+            PrimitiveScreenProgram(
+                renderInstructions =
+                    listOf(
+                        PrimitiveRenderInstruction(
+                            path = "title",
+                            visible = null,
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.DrawText(
+                                    x = 0,
+                                    y = 0,
+                                    width = 40,
+                                    height = 9,
+                                    text = PrimitiveValueExpression.StateField("title"),
+                                    color = PrimitiveValueExpression.Constant(Color.White),
+                                ),
+                        ),
+                    ),
+                inputInstructions = emptyList(),
+            )
+
+        val generated =
+            primitive.generateMinecraftScreenSource(
+                packageName = "ru.lazyhat.generated",
+                className = "GeneratedMinecraftScreen",
+                stateType = "ScreenState",
+                actionType = "TestAction",
+            )
+
+        assertTrue("private val textLayoutCache =" in generated.source)
+        assertTrue("LinkedHashMap<TextLayoutKey, List<TextLine>>(256, 0.75f, true)" in generated.source)
+        assertTrue("override fun removeEldestEntry" in generated.source)
+        assertTrue("TextLayoutKey(" in generated.source)
+        assertTrue("textLayoutCache.getOrPut(key)" in generated.source)
+        assertTrue("private data class TextLayoutKey" in generated.source)
+        assertTrue("private data class TextLine" in generated.source)
+        assertFalse("CachedPrimitiveScreenRuntimeExecutor" in generated.source)
+        assertFalse("RenderBackend" in generated.source)
+    }
+
+    @Test
     fun minecraftSourceRejectsUnsupportedTargetOperationsThroughAnalysis() {
         val primitive =
             PrimitiveScreenProgram(
