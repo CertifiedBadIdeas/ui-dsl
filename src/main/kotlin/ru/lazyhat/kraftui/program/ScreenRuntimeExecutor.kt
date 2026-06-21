@@ -163,7 +163,7 @@ class ScreenRuntimeExecutor<Action>(
             for (op in frame.ops) {
                 when (op) {
                     is RenderOp.FillRect -> {
-                        backend.fillRect(op.x + ox, op.y + oy, op.width, op.height, op.color)
+                        backend.fillRect(op.x + ox, op.y + oy, op.width, op.height, op.color.value)
                     }
 
                     is RenderOp.DrawText -> {

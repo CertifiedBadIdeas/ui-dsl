@@ -178,10 +178,12 @@ fun Modifier.findTextFlow() = find<TextFlowModifier>()
 //
 
 data class BackgroundModifier(
-    val color: Color,
+    val color: Value<Color>,
 ) : Modifier.Element
 
-fun Modifier.background(color: Color) = then(BackgroundModifier(color))
+fun Modifier.background(color: Color) = background(value(color))
+
+fun Modifier.background(color: Value<Color>) = then(BackgroundModifier(color))
 
 fun Modifier.findBackground() = find<BackgroundModifier>()
 

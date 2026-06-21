@@ -248,7 +248,7 @@ class UiScope<Action> {
         action: Action,
         block: UiScope<Action>.() -> Unit,
     ) {
-        button(modifier, value { action }, block)
+        button(modifier, value(action), block)
     }
 
     fun button(

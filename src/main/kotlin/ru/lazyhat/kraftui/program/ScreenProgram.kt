@@ -34,6 +34,43 @@ data class ScreenProgram<Action>(
     val diagnostics: List<ScreenProgramDiagnostic> = emptyList(),
 )
 
+data class UiDependencies(
+    val dynamicValue: Boolean = false,
+    val dynamicVisibility: Boolean = false,
+    val dynamicOrigin: Boolean = false,
+    val dynamicInput: Boolean = false,
+) {
+    val isStatic: Boolean
+        get() = !dynamicValue && !dynamicVisibility && !dynamicOrigin && !dynamicInput
+
+    operator fun plus(other: UiDependencies): UiDependencies =
+        UiDependencies(
+            dynamicValue = dynamicValue || other.dynamicValue,
+            dynamicVisibility = dynamicVisibility || other.dynamicVisibility,
+            dynamicOrigin = dynamicOrigin || other.dynamicOrigin,
+            dynamicInput = dynamicInput || other.dynamicInput,
+        )
+
+    companion object {
+        val Static: UiDependencies = UiDependencies()
+        val DynamicValue: UiDependencies = UiDependencies(dynamicValue = true)
+        val DynamicVisibility: UiDependencies = UiDependencies(dynamicVisibility = true)
+        val DynamicOrigin: UiDependencies = UiDependencies(dynamicOrigin = true)
+        val DynamicInput: UiDependencies = UiDependencies(dynamicInput = true)
+    }
+}
+
+val ScreenProgram<*>.dependencies: UiDependencies
+    get() =
+        frames.fold(UiDependencies.Static) { acc, frame -> acc + frame.dependencies } +
+            hitRegions.fold(UiDependencies.Static) { acc, region -> acc + region.dependencies } +
+            tooltipRegions.fold(UiDependencies.Static) { acc, region -> acc + region.dependencies }
+
+fun ScreenProgram<*>.dependenciesFor(region: HitRegion<*>): UiDependencies =
+    region.dependencies +
+        frames[region.frameIndex].placementDependencies +
+        region.clip.frameDependency(this)
+
 sealed interface ScreenProgramDiagnostic {
     val nodeId: String
 
@@ -147,6 +184,16 @@ data class RenderFrame(
     val ops: List<RenderOp>,
 )
 
+val RenderFrame.dependencies: UiDependencies
+    get() =
+        ops.fold(UiDependencies.Static) { acc, op -> acc + op.dependencies } +
+            placementDependencies
+
+val RenderFrame.placementDependencies: UiDependencies
+    get() =
+            origin.dynamicDependency(UiDependencies.DynamicOrigin) +
+            visible.dynamicDependency(UiDependencies.DynamicVisibility)
+
 /**
  * A drawing primitive bound to absolute pixels when [RenderFrame.origin] is
  * `null`, or to pixels relative to the frame origin otherwise.
@@ -157,7 +204,7 @@ sealed interface RenderOp {
         val y: Int,
         val width: Int,
         val height: Int,
-        val color: Color,
+        val color: Value<Color>,
     ) : RenderOp
 
     data class DrawText(
@@ -222,6 +269,20 @@ sealed interface RenderOp {
     ) : RenderOp
 }
 
+val RenderOp.dependencies: UiDependencies
+    get() =
+        when (this) {
+            is RenderOp.FillRect -> color.dynamicDependency(UiDependencies.DynamicValue)
+            is RenderOp.DrawText ->
+                value.dynamicDependency(UiDependencies.DynamicValue) +
+                    color.dynamicDependency(UiDependencies.DynamicValue)
+            is RenderOp.DrawTerminalSurface -> snapshot.dynamicDependency(UiDependencies.DynamicValue)
+            is RenderOp.DrawCanvas -> UiDependencies.DynamicValue
+            is RenderOp.PushClip -> UiDependencies.Static
+            RenderOp.PopClip -> UiDependencies.Static
+            is RenderOp.DrawCodeEditor -> viewModel.dynamicDependency(UiDependencies.DynamicValue)
+        }
+
 /**
  * A clickable area.
  *
@@ -246,6 +307,9 @@ data class HitRegion<out Action>(
     val onDrag: ((x: Int, y: Int) -> Unit)? = null,
     val onDragEnd: ((x: Int, y: Int) -> Unit)? = null,
 )
+
+val HitRegion<*>.dependencies: UiDependencies
+    get() = action.dynamicDependency(UiDependencies.DynamicInput)
 
 /**
  * A rectangular bound, expressed in the coordinate space of the frame
@@ -290,6 +354,19 @@ data class TooltipRegion(
     val height: Int,
     val text: Value<String>,
 )
+
+val TooltipRegion.dependencies: UiDependencies
+    get() = text.dynamicDependency(UiDependencies.DynamicValue)
+
+private fun Value<*>?.dynamicDependency(kind: UiDependencies): UiDependencies =
+    if (this == null || isStatic) UiDependencies.Static else kind
+
+private fun HitClip?.frameDependency(program: ScreenProgram<*>): UiDependencies =
+    if (this == null) {
+        UiDependencies.Static
+    } else {
+        program.frames[frameIndex].placementDependencies
+    }
 
 /**
  * A rectangle that absorbs mouse-wheel events. Coordinates follow the same

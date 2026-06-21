@@ -30,6 +30,134 @@ class ScreenProgramCompilerTest {
     private fun emptySnapshot(): Any = "terminal"
 
     @Test
+    fun constantRenderOperationsAreMarkedStatic() {
+        val program =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    box(Modifier.size(40, 20).background(Color.Red)) {
+                        text("Ready", color = Color.White)
+                    }
+                },
+            )
+
+        assertTrue(program.dependencies.isStatic)
+        assertTrue(program.frames.single().dependencies.isStatic)
+        assertTrue(program.frames.single().ops.all { it.dependencies.isStatic })
+    }
+
+    @Test
+    fun dynamicBackgroundColorIsMarkedAsDynamicValue() {
+        val program =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    box(Modifier.size(40, 20).background(value { Color.Red }))
+                },
+            )
+
+        val fill = program.frames.single().ops.single() as RenderOp.FillRect
+        assertEquals(UiDependencies(dynamicValue = true), fill.dependencies)
+        assertEquals(UiDependencies(dynamicValue = true), program.dependencies)
+    }
+
+    @Test
+    fun dynamicTextColorIsMarkedAsDynamicValue() {
+        val program =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    text(
+                        modifier = Modifier.size(40, 9),
+                        color = value { Color.Red },
+                        text = value("Ready"),
+                    )
+                },
+            )
+
+        val text = program.frames.single().ops.single() as RenderOp.DrawText
+        assertEquals(UiDependencies(dynamicValue = true), text.dependencies)
+        assertEquals(UiDependencies(dynamicValue = true), program.dependencies)
+    }
+
+    @Test
+    fun dynamicOverlayOriginIsMarkedAsDynamicOrigin() {
+        val program =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    overlay(
+                        modifier = Modifier.size(20, 20),
+                        anchor = value { ru.lazyhat.kraftui.foundation.modifier.Position(4, 6) },
+                    ) {
+                        text("Popup")
+                    }
+                },
+            )
+
+        assertEquals(UiDependencies(dynamicOrigin = true), program.frames[1].dependencies)
+        assertEquals(UiDependencies(dynamicOrigin = true), program.dependencies)
+    }
+
+    @Test
+    fun dynamicOverlayVisibilityIsMarkedAsDynamicVisibility() {
+        val program =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    overlay(
+                        modifier = Modifier.size(20, 20),
+                        visible = value { true },
+                    ) {
+                        text("Popup")
+                    }
+                },
+            )
+
+        assertEquals(UiDependencies(dynamicVisibility = true), program.frames[1].dependencies)
+        assertEquals(UiDependencies(dynamicVisibility = true), program.dependencies)
+    }
+
+    @Test
+    fun dynamicClickActionIsMarkedAsDynamicInput() {
+        val program =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    button(
+                        modifier = Modifier.size(20, 20),
+                        action = value { Unit },
+                    ) {
+                        text("Run")
+                    }
+                },
+            )
+
+        assertEquals(UiDependencies(dynamicInput = true), program.hitRegions.single().dependencies)
+        assertEquals(UiDependencies(dynamicInput = true), program.dependencies)
+    }
+
+    @Test
+    fun hitRegionInsideDynamicOverlayCarriesFrameDependencies() {
+        val program =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    overlay(
+                        modifier = Modifier.size(20, 20),
+                        anchor = value { ru.lazyhat.kraftui.foundation.modifier.Position(4, 6) },
+                        visible = value { true },
+                    ) {
+                        button(
+                            modifier = Modifier.size(20, 20),
+                            action = Unit,
+                        ) {
+                            text("Run")
+                        }
+                    }
+                },
+            )
+
+        assertEquals(
+            UiDependencies(dynamicVisibility = true, dynamicOrigin = true),
+            program.dependenciesFor(program.hitRegions.single()),
+        )
+    }
+
+    @Test
     fun terminalSurfaceIsCollectedAsAFocusNode() {
         val program =
             ScreenProgramCompiler().compile(

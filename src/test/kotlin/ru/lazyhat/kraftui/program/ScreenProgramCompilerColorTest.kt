@@ -24,7 +24,7 @@ class ScreenProgramCompilerColorTest {
                 .ops
                 .filterIsInstance<RenderOp.FillRect>()
                 .single()
-        assertEquals(Color.Red, fill.color)
+        assertEquals(Color.Red, fill.color.value)
         assertEquals(40, fill.width)
         assertEquals(20, fill.height)
     }

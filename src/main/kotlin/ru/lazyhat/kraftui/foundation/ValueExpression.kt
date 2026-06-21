@@ -21,12 +21,17 @@ package ru.lazyhat.kraftui.foundation
 
 interface Value<out T> {
     val value: T
+    val isStatic: Boolean
+        get() = false
 }
 
 @JvmInline
 value class ValueConstant<T>(
     override val value: T,
-) : Value<T>
+) : Value<T> {
+    override val isStatic: Boolean
+        get() = true
+}
 
 private class ValueExpression<T>(
     private val block: () -> T,
