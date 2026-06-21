@@ -11,6 +11,7 @@ import ru.lazyhat.kraftui.foundation.value
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class GeneratedRenderExecutorSourceTest {
@@ -68,5 +69,31 @@ class GeneratedRenderExecutorSourceTest {
 
         overlayPosition = Position(7, 9)
         assertEquals(Position(7, 9), plan.renderSteps[4].origin?.value)
+    }
+
+    @Test
+    fun generatedOnlyModeRejectsRuntimeValuesBeforeWritingSource() {
+        val plan =
+            ScreenProgramCompiler().compile(
+                ui(Modifier.size(64, 32)) {
+                    text(
+                        modifier = Modifier.offset(3, 4).size(20, 10),
+                        color = Color.White,
+                        text = value { "runtime" },
+                    )
+                },
+            ).optimize()
+                .toExecutablePlan()
+
+        val failure =
+            assertFailsWith<IllegalArgumentException> {
+                plan.generateRenderExecutorSource(
+                    packageName = "ru.lazyhat.generated",
+                    className = "GeneratedTestScreen",
+                    mode = GeneratedRenderExecutorMode.GeneratedOnly,
+                )
+            }
+
+        assertTrue("frame[0].op[0].text" in failure.message.orEmpty())
     }
 }

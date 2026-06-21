@@ -19,10 +19,24 @@
 
 package ru.lazyhat.kraftui.foundation
 
+import kotlin.reflect.KProperty1
+
+sealed interface GeneratedValueExpression {
+    data class Constant(
+        val value: Any?,
+    ) : GeneratedValueExpression
+
+    data class StateField(
+        val fieldName: String,
+    ) : GeneratedValueExpression
+}
+
 interface Value<out T> {
     val value: T
     val isStatic: Boolean
         get() = false
+    val generatedExpression: GeneratedValueExpression?
+        get() = null
 }
 
 @JvmInline
@@ -31,6 +45,8 @@ value class ValueConstant<T>(
 ) : Value<T> {
     override val isStatic: Boolean
         get() = true
+    override val generatedExpression: GeneratedValueExpression
+        get() = GeneratedValueExpression.Constant(value)
 }
 
 private class ValueExpression<T>(
@@ -47,9 +63,25 @@ private class TickValueExpression<T>(
         get() = block(TickContext.current)
 }
 
+private class StateValueExpression<State, T>(
+    private val property: KProperty1<State, T>,
+    private val state: () -> State,
+) : Value<T> {
+    override val value: T
+        get() = property.get(state())
+
+    override val generatedExpression: GeneratedValueExpression
+        get() = GeneratedValueExpression.StateField(property.name)
+}
+
 fun <T> value(value: T): Value<T> = ValueConstant(value)
 
 fun <T> value(block: () -> T): Value<T> = ValueExpression(block)
+
+fun <State, T> stateValue(
+    property: KProperty1<State, T>,
+    state: () -> State,
+): Value<T> = StateValueExpression(property, state)
 
 /**
  * A [Value] whose computation receives the current monotonic UI tick. The tick

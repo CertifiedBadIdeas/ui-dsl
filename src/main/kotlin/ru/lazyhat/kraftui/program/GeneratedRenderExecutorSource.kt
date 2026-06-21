@@ -8,15 +8,28 @@ data class GeneratedRenderExecutorSource(
     val source: String,
 )
 
+enum class GeneratedRenderExecutorMode {
+    RuntimePlanBridge,
+    GeneratedOnly,
+}
+
 fun ExecutableScreenPlan<*>.generateRenderExecutorSource(
     packageName: String,
     className: String,
+    mode: GeneratedRenderExecutorMode = GeneratedRenderExecutorMode.RuntimePlanBridge,
 ): GeneratedRenderExecutorSource {
     require(packageName.isValidQualifiedIdentifier()) {
         "packageName must be a valid qualified Kotlin identifier"
     }
     require(className.isValidIdentifier()) {
         "className must be a valid Kotlin identifier"
+    }
+    if (mode == GeneratedRenderExecutorMode.GeneratedOnly) {
+        val validation = screenProgram.validateGeneratedProgram()
+        require(validation.isValid) {
+            "Screen program contains runtime-only parts and cannot be generated:\n" +
+                validation.diagnostics.joinToString(separator = "\n") { it.asText() }
+        }
     }
 
     val source =
