@@ -1,4 +1,4 @@
-package ru.lazyhat.kraftui.program
+package ru.lazyhat.kraftui.layout
 
 import ru.lazyhat.kraftui.foundation.modifier.Modifier
 import ru.lazyhat.kraftui.foundation.modifier.UiAlignment
@@ -14,6 +14,7 @@ import ru.lazyhat.kraftui.foundation.FixedGridTrack
 import ru.lazyhat.kraftui.foundation.WeightedGridTrack
 import ru.lazyhat.kraftui.foundation.ui
 import ru.lazyhat.kraftui.foundation.value
+import ru.lazyhat.kraftui.program.FontMetrics
 import kotlin.test.Test
 import kotlin.test.assertEquals
 

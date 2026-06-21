@@ -1,4 +1,4 @@
-package ru.lazyhat.kraftui.program
+package ru.lazyhat.kraftui.text
 
 import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
 import ru.lazyhat.kraftui.foundation.modifier.TextWrapPolicy

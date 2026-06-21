@@ -1,4 +1,4 @@
-package ru.lazyhat.kraftui.program
+package ru.lazyhat.kraftui.layout
 
 import ru.lazyhat.kraftui.foundation.UiElement
 import ru.lazyhat.kraftui.foundation.FixedGridTrack
@@ -19,6 +19,9 @@ import ru.lazyhat.kraftui.foundation.modifier.findWeight
 import ru.lazyhat.kraftui.foundation.modifier.findWidth
 import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
 import ru.lazyhat.kraftui.foundation.modifier.TextWrapPolicy
+import ru.lazyhat.kraftui.program.FontMetrics
+import ru.lazyhat.kraftui.text.TextFlow
+import ru.lazyhat.kraftui.text.TextLayouter
 
 /**
  * A resolved rectangle for a single UI node in some frame's coordinate space.

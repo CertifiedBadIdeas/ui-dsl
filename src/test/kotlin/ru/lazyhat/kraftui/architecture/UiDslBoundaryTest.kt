@@ -6,6 +6,7 @@ import kotlin.io.path.extension
 import kotlin.io.path.isRegularFile
 import kotlin.io.path.relativeTo
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class UiDslBoundaryTest {
@@ -47,5 +48,22 @@ class UiDslBoundaryTest {
             violations.isEmpty(),
             "ui-dsl must not import host/mod/core types:\n${violations.joinToString("\n")}",
         )
+    }
+
+    @Test
+    fun programPackageDoesNotOwnLayoutOrTextSystems() {
+        val programRoot = Path("src/main/kotlin/ru/lazyhat/kraftui/program")
+        val forbiddenFiles =
+            listOf(
+                "UiLayoutResolver.kt",
+                "TextLayouter.kt",
+            )
+
+        for (fileName in forbiddenFiles) {
+            assertFalse(
+                Files.exists(programRoot.resolve(fileName)),
+                "program package must compile UI programs only; $fileName belongs in a dedicated subsystem package",
+            )
+        }
     }
 }

@@ -5,6 +5,7 @@ import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.TickContext
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
+import ru.lazyhat.kraftui.text.TextLayouter
 
 /**
  * Runtime-side counterpart to [ScreenProgram].

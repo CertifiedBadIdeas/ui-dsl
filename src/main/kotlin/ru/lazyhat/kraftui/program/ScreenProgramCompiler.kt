@@ -16,6 +16,10 @@ import ru.lazyhat.kraftui.foundation.modifier.findTextOverflow
 import ru.lazyhat.kraftui.foundation.modifier.findTooltip
 import ru.lazyhat.kraftui.foundation.modifier.findZIndex
 import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
+import ru.lazyhat.kraftui.layout.LayoutNode
+import ru.lazyhat.kraftui.layout.UiLayoutResolver
+import ru.lazyhat.kraftui.text.TextFlow
+import ru.lazyhat.kraftui.text.TextLayouter
 
 /**
  * Compiles a [UiElement] tree into a [ScreenProgram] with:

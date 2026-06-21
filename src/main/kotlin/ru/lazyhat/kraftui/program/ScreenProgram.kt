@@ -8,6 +8,9 @@ import ru.lazyhat.kraftui.foundation.Value
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
 import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
+import ru.lazyhat.kraftui.layout.LayoutAxis
+import ru.lazyhat.kraftui.layout.LayoutDiagnostic
+import ru.lazyhat.kraftui.text.TextFlow
 
 /**
  * A compiled UI description ready for execution.
