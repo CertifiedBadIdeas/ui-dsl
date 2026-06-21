@@ -7,6 +7,7 @@ import ru.lazyhat.kraftui.foundation.HoverState
 import ru.lazyhat.kraftui.foundation.Value
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
+import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
 
 /**
  * A compiled UI description ready for execution.
@@ -27,7 +28,20 @@ data class ScreenProgram(
     val tooltipRegions: List<TooltipRegion> = emptyList(),
     val focusNodes: List<FocusNode> = emptyList(),
     val scrollRegions: List<ScrollRegion> = emptyList(),
+    val diagnostics: List<ScreenProgramDiagnostic> = emptyList(),
 )
+
+sealed interface ScreenProgramDiagnostic {
+    val nodeId: String
+
+    data class TextWouldOverflow(
+        override val nodeId: String,
+        val text: String,
+        val width: Int,
+        val textWidth: Int,
+        val policy: TextOverflowPolicy,
+    ) : ScreenProgramDiagnostic
+}
 
 /**
  * A keyboard-focus target produced by a `Modifier.focusable(...)` or by an
@@ -100,6 +114,7 @@ sealed interface RenderOp {
         val value: Value<String>,
         val color: Value<Color>,
         val alignment: TextAlignment,
+        val overflow: TextOverflowPolicy = TextOverflowPolicy.FailInValidation,
     ) : RenderOp
 
     data class DrawTerminalSurface(

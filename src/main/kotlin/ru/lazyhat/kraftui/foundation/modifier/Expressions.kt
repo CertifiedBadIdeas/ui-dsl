@@ -135,6 +135,22 @@ fun Modifier.findTextAlignment() = find<TextAlignmentModifier>()
 
 //
 
+enum class TextOverflowPolicy {
+    FailInValidation,
+    Clip,
+    Ellipsize,
+}
+
+data class TextOverflowModifier(
+    val policy: TextOverflowPolicy,
+) : Modifier.Element
+
+fun Modifier.textOverflow(policy: TextOverflowPolicy): Modifier = then(TextOverflowModifier(policy))
+
+fun Modifier.findTextOverflow() = find<TextOverflowModifier>()
+
+//
+
 data class BackgroundModifier(
     val color: Color,
 ) : Modifier.Element

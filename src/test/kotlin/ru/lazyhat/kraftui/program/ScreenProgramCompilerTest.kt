@@ -3,6 +3,7 @@ package ru.lazyhat.kraftui.program
 import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.HoverState
 import ru.lazyhat.kraftui.foundation.modifier.Modifier
+import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
 import ru.lazyhat.kraftui.foundation.modifier.UiAlignment
 import ru.lazyhat.kraftui.foundation.modifier.align
 import ru.lazyhat.kraftui.foundation.modifier.background
@@ -11,6 +12,7 @@ import ru.lazyhat.kraftui.foundation.modifier.hoverable
 import ru.lazyhat.kraftui.foundation.modifier.offset
 import ru.lazyhat.kraftui.foundation.modifier.padding
 import ru.lazyhat.kraftui.foundation.modifier.size
+import ru.lazyhat.kraftui.foundation.modifier.textOverflow
 import ru.lazyhat.kraftui.foundation.modifier.tooltip
 import ru.lazyhat.kraftui.foundation.ui
 import ru.lazyhat.kraftui.foundation.value
@@ -247,6 +249,90 @@ class ScreenProgramCompilerTest {
         assertEquals(44, text.x)
         assertEquals(15, text.y)
         assertEquals("AB", text.value.value)
+    }
+
+    @Test
+    fun compileReportsTextOverflowWhenPolicyRequiresValidationFailure() {
+        val program =
+            ScreenProgramCompiler(fontMetrics = fontMetrics).compile(
+                ui(Modifier.size(64, 20)) {
+                    text(
+                        modifier = Modifier.size(20, 10),
+                        text = value { "too wide" },
+                    )
+                },
+            )
+
+        val diagnostic = program.diagnostics.single() as ScreenProgramDiagnostic.TextWouldOverflow
+        assertEquals("root-0", diagnostic.nodeId)
+        assertEquals("too wide", diagnostic.text)
+        assertEquals(20, diagnostic.width)
+        assertEquals(48, diagnostic.textWidth)
+        assertEquals(TextOverflowPolicy.FailInValidation, diagnostic.policy)
+    }
+
+    @Test
+    fun runtimeEllipsizesTextUsingBackendMetrics() {
+        val rendered = mutableListOf<String>()
+        val program =
+            ScreenProgramCompiler(fontMetrics = fontMetrics).compile(
+                ui(Modifier.size(64, 20)) {
+                    text(
+                        modifier = Modifier.size(20, 10).textOverflow(TextOverflowPolicy.Ellipsize),
+                        text = value { "too wide" },
+                    )
+                },
+            )
+
+        ScreenRuntimeExecutor(program).render(
+            object : RenderBackend {
+                override fun fillRect(
+                    x: Int,
+                    y: Int,
+                    width: Int,
+                    height: Int,
+                    color: Color,
+                ) {}
+
+                override fun drawText(
+                    x: Int,
+                    y: Int,
+                    text: String,
+                    color: Color,
+                ) {
+                    rendered += text
+                }
+
+                override fun drawTerminalSurface(
+                    x: Int,
+                    y: Int,
+                    snapshot: Any,
+                ) {}
+
+                override fun pushClip(
+                    x: Int,
+                    y: Int,
+                    width: Int,
+                    height: Int,
+                ) {}
+
+                override fun popClip() {}
+
+                override fun drawCodeEditor(
+                    x: Int,
+                    y: Int,
+                    width: Int,
+                    height: Int,
+                    viewModel: ru.lazyhat.kraftui.editor.EditorViewModel,
+                    fontWidth: Int,
+                    fontHeight: Int,
+                ) {}
+
+                override fun measureText(text: String): Int = text.length * 6
+            },
+        )
+
+        assertEquals(listOf("..."), rendered)
     }
 
     @Test

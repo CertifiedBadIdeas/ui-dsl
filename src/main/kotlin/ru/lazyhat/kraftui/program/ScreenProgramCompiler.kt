@@ -11,8 +11,10 @@ import ru.lazyhat.kraftui.foundation.modifier.findFocusable
 import ru.lazyhat.kraftui.foundation.modifier.findHoverable
 import ru.lazyhat.kraftui.foundation.modifier.findSize
 import ru.lazyhat.kraftui.foundation.modifier.findTextAlignment
+import ru.lazyhat.kraftui.foundation.modifier.findTextOverflow
 import ru.lazyhat.kraftui.foundation.modifier.findTooltip
 import ru.lazyhat.kraftui.foundation.modifier.findZIndex
+import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
 
 /**
  * Compiles a [UiElement] tree into a [ScreenProgram] with:
@@ -44,6 +46,7 @@ class ScreenProgramCompiler(
         val tooltipRegions = mutableListOf<TooltipRegion>()
         val focusNodes = mutableListOf<FocusNode>()
         val scrollRegions = mutableListOf<ScrollRegion>()
+        val diagnostics = mutableListOf<ScreenProgramDiagnostic>()
 
         val rootSize = root.modifier.findSize()?.size
         val effectiveRootWidth = if (rootWidth > 0) rootWidth else rootSize?.width ?: 0
@@ -68,6 +71,7 @@ class ScreenProgramCompiler(
             descriptors = descriptors,
             focusNodes = focusNodes,
             scrollRegions = scrollRegions,
+            diagnostics = diagnostics,
             frameIndex = 0,
         )
 
@@ -82,6 +86,7 @@ class ScreenProgramCompiler(
             tooltipRegions = tooltipRegions.toList(),
             focusNodes = focusNodes.toList(),
             scrollRegions = scrollRegions.toList(),
+            diagnostics = diagnostics.toList(),
         )
     }
 
@@ -97,6 +102,7 @@ class ScreenProgramCompiler(
         descriptors: MutableList<FrameDescriptor>,
         focusNodes: MutableList<FocusNode>,
         scrollRegions: MutableList<ScrollRegion>,
+        diagnostics: MutableList<ScreenProgramDiagnostic>,
         frameIndex: Int,
     ) {
         if (element is UiElement.Overlay) {
@@ -111,6 +117,7 @@ class ScreenProgramCompiler(
                 descriptors,
                 focusNodes,
                 scrollRegions,
+                diagnostics,
             )
             return
         }
@@ -196,6 +203,7 @@ class ScreenProgramCompiler(
                         descriptors,
                         focusNodes,
                         scrollRegions,
+                        diagnostics,
                         frameIndex,
                     )
                 }
@@ -215,6 +223,7 @@ class ScreenProgramCompiler(
                         descriptors,
                         focusNodes,
                         scrollRegions,
+                        diagnostics,
                         frameIndex,
                     )
                 }
@@ -234,12 +243,27 @@ class ScreenProgramCompiler(
                         descriptors,
                         focusNodes,
                         scrollRegions,
+                        diagnostics,
                         frameIndex,
                     )
                 }
             }
 
             is UiElement.Text -> {
+                val overflow = element.modifier.findTextOverflow()?.policy ?: TextOverflowPolicy.FailInValidation
+                val metrics = fontMetrics
+                val text = metrics?.let { element.text.value }
+                val textWidth = if (metrics == null || text == null) null else metrics.width(text)
+                if (overflow == TextOverflowPolicy.FailInValidation && text != null && textWidth != null && textWidth > node.width) {
+                    diagnostics +=
+                        ScreenProgramDiagnostic.TextWouldOverflow(
+                            nodeId = nodeId,
+                            text = text,
+                            width = node.width,
+                            textWidth = textWidth,
+                            policy = overflow,
+                        )
+                }
                 ops +=
                     RenderOp.DrawText(
                         x = node.x,
@@ -248,6 +272,7 @@ class ScreenProgramCompiler(
                         value = element.text,
                         color = element.color,
                         alignment = element.modifier.findTextAlignment()?.alignment ?: TextAlignment.Start,
+                        overflow = overflow,
                     )
             }
 
@@ -310,6 +335,7 @@ class ScreenProgramCompiler(
                         descriptors,
                         focusNodes,
                         scrollRegions,
+                        diagnostics,
                         subFrameIndex,
                     )
                 }
@@ -332,6 +358,7 @@ class ScreenProgramCompiler(
                     descriptors,
                     focusNodes,
                     scrollRegions,
+                    diagnostics,
                     parentFrameIndex = frameIndex,
                 )
             }
@@ -349,6 +376,7 @@ class ScreenProgramCompiler(
         descriptors: MutableList<FrameDescriptor>,
         focusNodes: MutableList<FocusNode>,
         scrollRegions: MutableList<ScrollRegion>,
+        diagnostics: MutableList<ScreenProgramDiagnostic>,
     ) {
         val size = element.modifier.findSize()?.size
         val overlayWidth = size?.width ?: parentLayout["root"]?.width ?: 0
@@ -375,6 +403,7 @@ class ScreenProgramCompiler(
                 descriptors,
                 focusNodes,
                 scrollRegions,
+                diagnostics,
                 subFrameIndex,
             )
         }
@@ -397,6 +426,7 @@ class ScreenProgramCompiler(
         descriptors: MutableList<FrameDescriptor>,
         focusNodes: MutableList<FocusNode>,
         scrollRegions: MutableList<ScrollRegion>,
+        diagnostics: MutableList<ScreenProgramDiagnostic>,
         parentFrameIndex: Int,
     ) {
         // Optional background fill on the viewport itself.
@@ -451,6 +481,7 @@ class ScreenProgramCompiler(
                 descriptors,
                 focusNodes,
                 scrollRegions,
+                diagnostics,
                 subFrameIndex,
             )
         }
