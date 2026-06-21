@@ -30,6 +30,10 @@ class OptimizedScreenRuntimeExecutor<Action>(
 
     private var tickCounter: Int = 0
     private var activeDragRegion: HitRegion<Action>? = null
+    private val staticRenderCache = HashMap<StaticRenderOpKey, List<CachedRenderCommand>>()
+
+    val staticRenderCacheSize: Int
+        get() = staticRenderCache.size
 
     fun restoreFocus(nodeId: String?) {
         focusedNodeId =
@@ -86,9 +90,44 @@ class OptimizedScreenRuntimeExecutor<Action>(
             val ox = origin.x
             val oy = origin.y
             for (optimizedOp in frame.renderOps) {
-                renderOp(optimizedOp.source, ox, oy, backend)
+                if (optimizedOp.canUseStaticRenderCache) {
+                    val key = StaticRenderOpKey(optimizedOp.frameIndex, optimizedOp.opIndex)
+                    val cached =
+                        staticRenderCache.getOrPut(key) {
+                            recordStaticRenderCommands(optimizedOp.source, ox, oy, backend)
+                        }
+                    cached.forEach { it.replay(backend) }
+                } else {
+                    renderOp(optimizedOp.source, ox, oy, backend)
+                }
             }
         }
+    }
+
+    private val OptimizedRenderOp.canUseStaticRenderCache: Boolean
+        get() =
+            effectiveDependencies.isStatic &&
+                when (source) {
+                    is RenderOp.FillRect,
+                    is RenderOp.DrawTerminalSurface,
+                    is RenderOp.PushClip,
+                    RenderOp.PopClip,
+                    -> true
+                    is RenderOp.DrawText,
+                    is RenderOp.DrawCanvas,
+                    is RenderOp.DrawCodeEditor,
+                    -> false
+                }
+
+    private fun recordStaticRenderCommands(
+        op: RenderOp,
+        ox: Int,
+        oy: Int,
+        backend: RenderBackend,
+    ): List<CachedRenderCommand> {
+        val recorder = StaticRenderCommandRecorder(backend)
+        renderOp(op, ox, oy, recorder)
+        return recorder.commands
     }
 
     private fun renderOp(
@@ -333,6 +372,114 @@ class OptimizedScreenRuntimeExecutor<Action>(
         }
 
         override fun measureText(text: String): Int = backend?.measureText(text) ?: 0
+    }
+
+    private data class StaticRenderOpKey(
+        val frameIndex: Int,
+        val opIndex: Int,
+    )
+
+    private sealed interface CachedRenderCommand {
+        fun replay(backend: RenderBackend)
+
+        data class FillRect(
+            val x: Int,
+            val y: Int,
+            val width: Int,
+            val height: Int,
+            val color: Color,
+        ) : CachedRenderCommand {
+            override fun replay(backend: RenderBackend) {
+                backend.fillRect(x, y, width, height, color)
+            }
+        }
+
+        data class DrawTerminalSurface(
+            val x: Int,
+            val y: Int,
+            val snapshot: Any,
+        ) : CachedRenderCommand {
+            override fun replay(backend: RenderBackend) {
+                backend.drawTerminalSurface(x, y, snapshot)
+            }
+        }
+
+        data class PushClip(
+            val x: Int,
+            val y: Int,
+            val width: Int,
+            val height: Int,
+        ) : CachedRenderCommand {
+            override fun replay(backend: RenderBackend) {
+                backend.pushClip(x, y, width, height)
+            }
+        }
+
+        data object PopClip : CachedRenderCommand {
+            override fun replay(backend: RenderBackend) {
+                backend.popClip()
+            }
+        }
+    }
+
+    private class StaticRenderCommandRecorder(
+        private val metricsBackend: RenderBackend,
+    ) : RenderBackend {
+        val commands = ArrayList<CachedRenderCommand>()
+
+        override fun fillRect(
+            x: Int,
+            y: Int,
+            width: Int,
+            height: Int,
+            color: Color,
+        ) {
+            commands += CachedRenderCommand.FillRect(x, y, width, height, color)
+        }
+
+        override fun drawText(
+            x: Int,
+            y: Int,
+            text: String,
+            color: Color,
+        ) {
+            error("Static text commands are not cached because text layout depends on backend metrics")
+        }
+
+        override fun drawTerminalSurface(
+            x: Int,
+            y: Int,
+            snapshot: Any,
+        ) {
+            commands += CachedRenderCommand.DrawTerminalSurface(x, y, snapshot)
+        }
+
+        override fun pushClip(
+            x: Int,
+            y: Int,
+            width: Int,
+            height: Int,
+        ) {
+            commands += CachedRenderCommand.PushClip(x, y, width, height)
+        }
+
+        override fun popClip() {
+            commands += CachedRenderCommand.PopClip
+        }
+
+        override fun drawCodeEditor(
+            x: Int,
+            y: Int,
+            width: Int,
+            height: Int,
+            viewModel: ru.lazyhat.kraftui.editor.EditorViewModel,
+            fontWidth: Int,
+            fontHeight: Int,
+        ) {
+            error("Code editor commands are not cached because editor rendering is backend-owned")
+        }
+
+        override fun measureText(text: String): Int = metricsBackend.measureText(text)
     }
 
     private companion object {

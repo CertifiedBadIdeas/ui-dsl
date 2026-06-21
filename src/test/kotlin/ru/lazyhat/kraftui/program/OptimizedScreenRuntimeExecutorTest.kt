@@ -56,6 +56,46 @@ class OptimizedScreenRuntimeExecutorTest {
     }
 
     @Test
+    fun optimizedRenderCachesStaticCommandsWithoutChangingDrawOrder() {
+        var dynamicColor = Color.Blue
+        val program =
+            ScreenProgramCompiler().compile(
+                ui(Modifier.size(120, 30)) {
+                    box(Modifier.offset(0, 0).size(10, 10).background(Color.Red))
+                    box(Modifier.offset(10, 0).size(10, 10).background(value { dynamicColor }))
+                    box(Modifier.offset(20, 0).size(10, 10).background(Color.White))
+                },
+            )
+        val optimized = OptimizedScreenRuntimeExecutor(program.optimize())
+
+        val first = RecordingBackend()
+        optimized.render(first)
+        assertEquals(2, optimized.staticRenderCacheSize)
+        assertEquals(
+            listOf<RenderCall>(
+                RenderCall.FillRect(0, 0, 10, 10, Color.Red),
+                RenderCall.FillRect(10, 0, 10, 10, Color.Blue),
+                RenderCall.FillRect(20, 0, 10, 10, Color.White),
+            ),
+            first.calls,
+        )
+
+        dynamicColor = Color.Green
+        val second = RecordingBackend()
+        optimized.render(second)
+
+        assertEquals(2, optimized.staticRenderCacheSize)
+        assertEquals(
+            listOf<RenderCall>(
+                RenderCall.FillRect(0, 0, 10, 10, Color.Red),
+                RenderCall.FillRect(10, 0, 10, 10, Color.Green),
+                RenderCall.FillRect(20, 0, 10, 10, Color.White),
+            ),
+            second.calls,
+        )
+    }
+
+    @Test
     fun optimizedMouseClicksMatchReferenceMouseClicks() {
         var overlayPosition = Position(50, 30)
         var overlayVisible = true
