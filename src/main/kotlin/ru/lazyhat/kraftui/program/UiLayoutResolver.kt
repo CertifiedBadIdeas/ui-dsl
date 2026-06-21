@@ -1,6 +1,9 @@
 package ru.lazyhat.kraftui.program
 
 import ru.lazyhat.kraftui.foundation.UiElement
+import ru.lazyhat.kraftui.foundation.FixedGridTrack
+import ru.lazyhat.kraftui.foundation.GridTrack
+import ru.lazyhat.kraftui.foundation.WeightedGridTrack
 import ru.lazyhat.kraftui.foundation.modifier.AxisSize
 import ru.lazyhat.kraftui.foundation.modifier.Modifier
 import ru.lazyhat.kraftui.foundation.modifier.Padding
@@ -29,6 +32,37 @@ data class LayoutNode(
     val height: Int,
 )
 
+data class LayoutResult(
+    val nodes: Map<String, LayoutNode>,
+    val diagnostics: List<LayoutDiagnostic>,
+)
+
+enum class LayoutAxis {
+    Horizontal,
+    Vertical,
+}
+
+sealed interface LayoutDiagnostic {
+    val nodeId: String
+
+    data class ContainerOverflow(
+        override val nodeId: String,
+        val axis: LayoutAxis,
+        val available: Int,
+        val required: Int,
+    ) : LayoutDiagnostic
+
+    data class GridCellOutOfBounds(
+        override val nodeId: String,
+        val column: Int,
+        val row: Int,
+        val columnSpan: Int,
+        val rowSpan: Int,
+        val columnCount: Int,
+        val rowCount: Int,
+    ) : LayoutDiagnostic
+}
+
 /**
  * Resolves a subtree into a flat map of `nodeId -> LayoutNode`.
  *
@@ -47,10 +81,19 @@ class UiLayoutResolver(
         rootNodeId: String = "root",
         rootX: Int = 0,
         rootY: Int = 0,
-    ): Map<String, LayoutNode> {
+    ): Map<String, LayoutNode> =
+        resolveWithDiagnostics(root, rootNodeId, rootX, rootY).nodes
+
+    fun resolveWithDiagnostics(
+        root: UiElement,
+        rootNodeId: String = "root",
+        rootX: Int = 0,
+        rootY: Int = 0,
+    ): LayoutResult {
         val resolved = linkedMapOf<String, LayoutNode>()
-        resolveAsFrameRoot(root, rootNodeId, rootX, rootY, rootWidth, rootHeight, resolved)
-        return resolved
+        val diagnostics = mutableListOf<LayoutDiagnostic>()
+        resolveAsFrameRoot(root, rootNodeId, rootX, rootY, rootWidth, rootHeight, resolved, diagnostics)
+        return LayoutResult(resolved, diagnostics)
     }
 
     private fun resolveAsFrameRoot(
@@ -61,15 +104,16 @@ class UiLayoutResolver(
         width: Int,
         height: Int,
         resolved: MutableMap<String, LayoutNode>,
+        diagnostics: MutableList<LayoutDiagnostic>,
     ) {
         resolved[nodeId] = LayoutNode(nodeId, x, y, width, height)
         when (element) {
             is UiElement.Box -> {
-                resolveBoxChildren(element.children, nodeId, x, y, width, height, element.modifier, resolved)
+                resolveBoxChildren(element.children, nodeId, x, y, width, height, element.modifier, resolved, diagnostics)
             }
 
             is UiElement.Overlay -> {
-                resolveBoxChildren(element.children, nodeId, x, y, width, height, element.modifier, resolved)
+                resolveBoxChildren(element.children, nodeId, x, y, width, height, element.modifier, resolved, diagnostics)
             }
 
             is UiElement.Row -> {
@@ -84,6 +128,7 @@ class UiLayoutResolver(
                     element.gap,
                     element.verticalAlignment,
                     resolved,
+                    diagnostics,
                 )
             }
 
@@ -99,12 +144,26 @@ class UiLayoutResolver(
                     element.gap,
                     element.horizontalAlignment,
                     resolved,
+                    diagnostics,
+                )
+            }
+
+            is UiElement.Grid -> {
+                resolveGridCells(
+                    element,
+                    nodeId,
+                    x,
+                    y,
+                    width,
+                    height,
+                    resolved,
+                    diagnostics,
                 )
             }
 
             is UiElement.IfNode -> {
                 element.children.forEachIndexed { index, child ->
-                    resolveNode(child, "$nodeId-$index", x, y, width, height, resolved)
+                    resolveNode(child, "$nodeId-$index", x, y, width, height, resolved, diagnostics)
                 }
             }
 
@@ -114,7 +173,7 @@ class UiLayoutResolver(
 
             is UiElement.ScrollArea -> {
                 // Children live in a sub-frame and are resolved separately by the compiler.
-                resolveBoxChildren(element.children, nodeId, x, y, width, height, element.modifier, resolved)
+                resolveBoxChildren(element.children, nodeId, x, y, width, height, element.modifier, resolved, diagnostics)
             }
         }
     }
@@ -127,6 +186,7 @@ class UiLayoutResolver(
         parentWidth: Int,
         parentHeight: Int,
         resolved: MutableMap<String, LayoutNode>,
+        diagnostics: MutableList<LayoutDiagnostic>,
         forcedWidth: Int? = null,
         forcedHeight: Int? = null,
     ) {
@@ -151,7 +211,7 @@ class UiLayoutResolver(
 
         when (element) {
             is UiElement.Box -> {
-                resolveBoxChildren(element.children, nodeId, x, y, width, height, element.modifier, resolved)
+                resolveBoxChildren(element.children, nodeId, x, y, width, height, element.modifier, resolved, diagnostics)
             }
 
             is UiElement.Row -> {
@@ -166,6 +226,7 @@ class UiLayoutResolver(
                     element.gap,
                     element.verticalAlignment,
                     resolved,
+                    diagnostics,
                 )
             }
 
@@ -181,12 +242,26 @@ class UiLayoutResolver(
                     element.gap,
                     element.horizontalAlignment,
                     resolved,
+                    diagnostics,
+                )
+            }
+
+            is UiElement.Grid -> {
+                resolveGridCells(
+                    element,
+                    nodeId,
+                    x,
+                    y,
+                    width,
+                    height,
+                    resolved,
+                    diagnostics,
                 )
             }
 
             is UiElement.IfNode -> {
                 element.children.forEachIndexed { index, child ->
-                    resolveNode(child, "$nodeId-$index", x, y, width, height, resolved)
+                    resolveNode(child, "$nodeId-$index", x, y, width, height, resolved, diagnostics)
                 }
             }
 
@@ -210,6 +285,7 @@ class UiLayoutResolver(
         height: Int,
         modifier: Modifier,
         resolved: MutableMap<String, LayoutNode>,
+        diagnostics: MutableList<LayoutDiagnostic>,
     ) {
         val padding = modifier.findPadding()?.padding ?: Padding.Zero
 
@@ -219,7 +295,7 @@ class UiLayoutResolver(
         val contentHeight = height - padding.top - padding.bottom
 
         children.forEachIndexed { index, child ->
-            resolveNode(child, "$nodeId-$index", contentX, contentY, contentWidth, contentHeight, resolved)
+            resolveNode(child, "$nodeId-$index", contentX, contentY, contentWidth, contentHeight, resolved, diagnostics)
         }
     }
 
@@ -234,6 +310,7 @@ class UiLayoutResolver(
         gap: Int,
         verticalAlignment: UiAlignment?,
         resolved: MutableMap<String, LayoutNode>,
+        diagnostics: MutableList<LayoutDiagnostic>,
     ) {
         val padding = modifier.findPadding()?.padding ?: Padding.Zero
 
@@ -248,6 +325,15 @@ class UiLayoutResolver(
             flow
                 .filter { it.modifier.findWeight() == null }
                 .sumOf { primaryWidthForRow(it, contentWidth) } + gapWidth
+        if (fixedWidth > contentWidth) {
+            diagnostics +=
+                LayoutDiagnostic.ContainerOverflow(
+                    nodeId = nodeId,
+                    axis = LayoutAxis.Horizontal,
+                    available = contentWidth,
+                    required = fixedWidth,
+                )
+        }
         val totalWeight = flow.sumOf { (it.modifier.findWeight()?.weight ?: 0f).toDouble() }.toFloat()
 
         val remainingWidth = (contentWidth - fixedWidth).coerceAtLeast(0)
@@ -287,6 +373,7 @@ class UiLayoutResolver(
                 childWidth,
                 childHeight,
                 resolved,
+                diagnostics,
                 forcedWidth = childWidth,
                 forcedHeight = childHeight,
             )
@@ -305,6 +392,7 @@ class UiLayoutResolver(
         gap: Int,
         horizontalAlignment: UiAlignment?,
         resolved: MutableMap<String, LayoutNode>,
+        diagnostics: MutableList<LayoutDiagnostic>,
     ) {
         val padding = modifier.findPadding()?.padding ?: Padding.Zero
 
@@ -319,6 +407,15 @@ class UiLayoutResolver(
             flow
                 .filter { it.modifier.findWeight() == null }
                 .sumOf { primaryHeightForColumn(it, contentHeight) } + gapHeight
+        if (fixedHeight > contentHeight) {
+            diagnostics +=
+                LayoutDiagnostic.ContainerOverflow(
+                    nodeId = nodeId,
+                    axis = LayoutAxis.Vertical,
+                    available = contentHeight,
+                    required = fixedHeight,
+                )
+        }
         val totalWeight = flow.sumOf { (it.modifier.findWeight()?.weight ?: 0f).toDouble() }.toFloat()
 
         val remainingHeight = (contentHeight - fixedHeight).coerceAtLeast(0)
@@ -358,12 +455,163 @@ class UiLayoutResolver(
                 childWidth,
                 childHeight,
                 resolved,
+                diagnostics,
                 forcedWidth = childWidth,
                 forcedHeight = childHeight,
             )
             cursorY += childHeight + gap
         }
     }
+
+    private fun resolveGridCells(
+        element: UiElement.Grid,
+        nodeId: String,
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        resolved: MutableMap<String, LayoutNode>,
+        diagnostics: MutableList<LayoutDiagnostic>,
+    ) {
+        val padding = element.modifier.findPadding()?.padding ?: Padding.Zero
+
+        val contentX = x + padding.left
+        val contentY = y + padding.top
+        val contentWidth = width - padding.left - padding.right
+        val contentHeight = height - padding.top - padding.bottom
+
+        val columnWidths =
+            resolveTracks(
+                nodeId = nodeId,
+                axis = LayoutAxis.Horizontal,
+                tracks = element.columns,
+                available = contentWidth,
+                gap = element.columnGap,
+                diagnostics = diagnostics,
+            )
+        val rowHeights =
+            resolveTracks(
+                nodeId = nodeId,
+                axis = LayoutAxis.Vertical,
+                tracks = element.rows,
+                available = contentHeight,
+                gap = element.rowGap,
+                diagnostics = diagnostics,
+            )
+
+        val columnOffsets = offsets(columnWidths, element.columnGap)
+        val rowOffsets = offsets(rowHeights, element.rowGap)
+
+        element.cells.forEachIndexed { cellIndex, cell ->
+            val cellNodeId = "$nodeId-$cellIndex"
+            if (cell.column + cell.columnSpan > element.columns.size || cell.row + cell.rowSpan > element.rows.size) {
+                diagnostics +=
+                    LayoutDiagnostic.GridCellOutOfBounds(
+                        nodeId = cellNodeId,
+                        column = cell.column,
+                        row = cell.row,
+                        columnSpan = cell.columnSpan,
+                        rowSpan = cell.rowSpan,
+                        columnCount = element.columns.size,
+                        rowCount = element.rows.size,
+                    )
+                return@forEachIndexed
+            }
+
+            val cellX = contentX + columnOffsets[cell.column]
+            val cellY = contentY + rowOffsets[cell.row]
+            val cellWidth = spanSize(columnWidths, element.columnGap, cell.column, cell.columnSpan)
+            val cellHeight = spanSize(rowHeights, element.rowGap, cell.row, cell.rowSpan)
+
+            cell.children.forEachIndexed { childIndex, child ->
+                resolveNode(
+                    child,
+                    "$cellNodeId-$childIndex",
+                    cellX,
+                    cellY,
+                    cellWidth,
+                    cellHeight,
+                    resolved,
+                    diagnostics,
+                )
+            }
+        }
+    }
+
+    private fun resolveTracks(
+        nodeId: String,
+        axis: LayoutAxis,
+        tracks: List<GridTrack>,
+        available: Int,
+        gap: Int,
+        diagnostics: MutableList<LayoutDiagnostic>,
+    ): List<Int> {
+        val gapSize = gap * (tracks.size - 1).coerceAtLeast(0)
+        val fixedSize =
+            tracks.sumOf {
+                when (it) {
+                    is FixedGridTrack -> it.pixels
+                    is WeightedGridTrack -> 0
+                }
+            } + gapSize
+        if (fixedSize > available) {
+            diagnostics +=
+                LayoutDiagnostic.ContainerOverflow(
+                    nodeId = nodeId,
+                    axis = axis,
+                    available = available,
+                    required = fixedSize,
+                )
+        }
+
+        val remaining = (available - fixedSize).coerceAtLeast(0)
+        val totalWeight =
+            tracks.sumOf {
+                when (it) {
+                    is FixedGridTrack -> 0.0
+                    is WeightedGridTrack -> it.weight.toDouble()
+                }
+            }.toFloat()
+        var assignedWeightedSize = 0
+        val weightedTracks = tracks.count { it is WeightedGridTrack }
+        var weightedIndex = 0
+
+        return tracks.map { track ->
+            when (track) {
+                is FixedGridTrack -> track.pixels
+                is WeightedGridTrack -> {
+                    weightedIndex += 1
+                    if (weightedIndex == weightedTracks) {
+                        remaining - assignedWeightedSize
+                    } else {
+                        ((remaining * (track.weight / totalWeight))).toInt().also {
+                            assignedWeightedSize += it
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun offsets(
+        sizes: List<Int>,
+        gap: Int,
+    ): List<Int> {
+        var cursor = 0
+        return sizes.map { size ->
+            val current = cursor
+            cursor += size + gap
+            current
+        }
+    }
+
+    private fun spanSize(
+        sizes: List<Int>,
+        gap: Int,
+        start: Int,
+        span: Int,
+    ): Int =
+        sizes.drop(start).take(span).sum() + gap * (span - 1).coerceAtLeast(0)
 
     private fun alignX(
         parentX: Int,

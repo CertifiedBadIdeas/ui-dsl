@@ -2,6 +2,7 @@ package ru.lazyhat.kraftui.preview
 
 import ru.lazyhat.kraftui.foundation.UiElement
 import ru.lazyhat.kraftui.program.FontMetrics
+import ru.lazyhat.kraftui.program.ScreenProgramDiagnosticReport
 import ru.lazyhat.kraftui.program.ScreenProgramCompiler
 import ru.lazyhat.kraftui.program.ScreenRuntimeExecutor
 import java.awt.image.BufferedImage
@@ -33,7 +34,7 @@ class UiPreviewRenderer(
                     rootHeight = spec.height,
                 )
         check(program.diagnostics.isEmpty()) {
-            "UI preview '${spec.id}' has layout diagnostics: ${program.diagnostics.joinToString()}"
+            "UI preview '${spec.id}' has layout diagnostics:\n${ScreenProgramDiagnosticReport(program.diagnostics).asText()}"
         }
         ScreenRuntimeExecutor(program).render(backend)
         backend.close()

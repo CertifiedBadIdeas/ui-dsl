@@ -47,7 +47,8 @@ class UiPreviewRendererTest {
             }
 
         assertTrue("overflow" in error.message.orEmpty())
-        assertTrue("TextWouldOverflow" in error.message.orEmpty())
+        assertTrue("text overflow" in error.message.orEmpty())
+        assertTrue("text width 48 px, available 8 px" in error.message.orEmpty())
     }
 
     private class FixedPreviewFont : PreviewFont {

@@ -29,6 +29,15 @@ sealed interface UiElement {
         val horizontalAlignment: UiAlignment? = null,
     ) : UiElement
 
+    data class Grid(
+        override val modifier: Modifier,
+        val columns: List<GridTrack>,
+        val rows: List<GridTrack>,
+        val cells: List<GridCell>,
+        val columnGap: Int = 0,
+        val rowGap: Int = 0,
+    ) : UiElement
+
     data class Text(
         override val modifier: Modifier,
         val color: Value<Color>,
@@ -118,6 +127,62 @@ sealed interface UiElement {
     ) : UiElement
 }
 
+sealed interface GridTrack
+
+data class FixedGridTrack(
+    val pixels: Int,
+) : GridTrack {
+    init {
+        require(pixels >= 0) { "fixed grid track must be non-negative" }
+    }
+}
+
+data class WeightedGridTrack(
+    val weight: Float,
+) : GridTrack {
+    init {
+        require(weight.isFinite() && weight > 0f) { "weighted grid track must be positive and finite" }
+    }
+}
+
+data class GridCell(
+    val column: Int,
+    val row: Int,
+    val columnSpan: Int,
+    val rowSpan: Int,
+    val children: List<UiElement>,
+) {
+    init {
+        require(column >= 0) { "grid cell column must be non-negative" }
+        require(row >= 0) { "grid cell row must be non-negative" }
+        require(columnSpan > 0) { "grid cell column span must be positive" }
+        require(rowSpan > 0) { "grid cell row span must be positive" }
+    }
+}
+
+class GridScope {
+    private val cells = mutableListOf<GridCell>()
+
+    fun cell(
+        column: Int,
+        row: Int,
+        columnSpan: Int = 1,
+        rowSpan: Int = 1,
+        block: UiScope.() -> Unit,
+    ) {
+        cells +=
+            GridCell(
+                column = column,
+                row = row,
+                columnSpan = columnSpan,
+                rowSpan = rowSpan,
+                children = UiScope().apply(block).build(),
+            )
+    }
+
+    fun build(): List<GridCell> = cells
+}
+
 class UiScope {
     private val children = mutableListOf<UiElement>()
 
@@ -146,6 +211,29 @@ class UiScope {
     ) {
         require(gap >= 0)
         children += UiElement.Column(modifier, UiScope().apply(block).build(), gap, horizontalAlignment)
+    }
+
+    fun grid(
+        modifier: Modifier = Modifier,
+        columns: List<GridTrack>,
+        rows: List<GridTrack>,
+        columnGap: Int = 0,
+        rowGap: Int = 0,
+        block: GridScope.() -> Unit,
+    ) {
+        require(columns.isNotEmpty()) { "grid must have at least one column" }
+        require(rows.isNotEmpty()) { "grid must have at least one row" }
+        require(columnGap >= 0) { "grid column gap must be non-negative" }
+        require(rowGap >= 0) { "grid row gap must be non-negative" }
+        children +=
+            UiElement.Grid(
+                modifier = modifier,
+                columns = columns,
+                rows = rows,
+                cells = GridScope().apply(block).build(),
+                columnGap = columnGap,
+                rowGap = rowGap,
+            )
     }
 
     fun button(

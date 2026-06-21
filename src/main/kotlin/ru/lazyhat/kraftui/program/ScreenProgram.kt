@@ -34,6 +34,12 @@ data class ScreenProgram(
 sealed interface ScreenProgramDiagnostic {
     val nodeId: String
 
+    data class LayoutViolation(
+        val diagnostic: LayoutDiagnostic,
+    ) : ScreenProgramDiagnostic {
+        override val nodeId: String = diagnostic.nodeId
+    }
+
     data class TextWouldOverflow(
         override val nodeId: String,
         val text: String,
@@ -41,6 +47,39 @@ sealed interface ScreenProgramDiagnostic {
         val textWidth: Int,
         val policy: TextOverflowPolicy,
     ) : ScreenProgramDiagnostic
+}
+
+data class ScreenProgramDiagnosticReport(
+    val diagnostics: List<ScreenProgramDiagnostic>,
+) {
+    fun asText(): String =
+        if (diagnostics.isEmpty()) {
+            "No UI diagnostics"
+        } else {
+            diagnostics.joinToString(separator = "\n") { it.asText() }
+        }
+
+    private fun ScreenProgramDiagnostic.asText(): String =
+        when (this) {
+            is ScreenProgramDiagnostic.LayoutViolation -> diagnostic.asText()
+            is ScreenProgramDiagnostic.TextWouldOverflow ->
+                "$nodeId: text overflow, text width $textWidth px, available $width px, policy $policy, text '$text'"
+        }
+
+    private fun LayoutDiagnostic.asText(): String =
+        when (this) {
+            is LayoutDiagnostic.ContainerOverflow -> {
+                val axisName =
+                    when (axis) {
+                        LayoutAxis.Horizontal -> "horizontal"
+                        LayoutAxis.Vertical -> "vertical"
+                    }
+                "$nodeId: $axisName overflow, required $required px, available $available px"
+            }
+
+            is LayoutDiagnostic.GridCellOutOfBounds ->
+                "$nodeId: grid cell out of bounds, column $column span $columnSpan of $columnCount, row $row span $rowSpan of $rowCount"
+        }
 }
 
 /**

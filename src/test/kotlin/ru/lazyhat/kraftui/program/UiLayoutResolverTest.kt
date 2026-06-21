@@ -10,6 +10,8 @@ import ru.lazyhat.kraftui.foundation.modifier.padding
 import ru.lazyhat.kraftui.foundation.modifier.size
 import ru.lazyhat.kraftui.foundation.modifier.weight
 import ru.lazyhat.kraftui.foundation.modifier.width
+import ru.lazyhat.kraftui.foundation.FixedGridTrack
+import ru.lazyhat.kraftui.foundation.WeightedGridTrack
 import ru.lazyhat.kraftui.foundation.ui
 import ru.lazyhat.kraftui.foundation.value
 import kotlin.test.Test
@@ -158,5 +160,59 @@ class UiLayoutResolverTest {
 
         assertEquals(LayoutNode("root-0-0", 80, 0, 20, 10), layout.getValue("root-0-0"))
         assertEquals(LayoutNode("root-0-1", 70, 13, 30, 10), layout.getValue("root-0-1"))
+    }
+
+    @Test
+    fun gridResolvesFixedAndWeightedTracksWithSpans() {
+        val root =
+            ui {
+                grid(
+                    modifier = Modifier.size(120, 60).padding(4),
+                    columns = listOf(FixedGridTrack(20), WeightedGridTrack(1f), WeightedGridTrack(2f)),
+                    rows = listOf(FixedGridTrack(10), WeightedGridTrack(1f)),
+                    columnGap = 2,
+                    rowGap = 3,
+                ) {
+                    cell(column = 0, row = 0) {
+                        box(modifier = Modifier.fillMaxWidth().fillMaxHeight())
+                    }
+                    cell(column = 1, row = 0, columnSpan = 2) {
+                        box(modifier = Modifier.fillMaxWidth().height(10))
+                    }
+                    cell(column = 2, row = 1) {
+                        box(modifier = Modifier.fillMaxWidth().fillMaxHeight())
+                    }
+                }
+            }
+
+        val layout = UiLayoutResolver(rootWidth = 120, rootHeight = 60).resolve(root)
+
+        assertEquals(LayoutNode("root-0-0-0", 4, 4, 20, 10), layout.getValue("root-0-0-0"))
+        assertEquals(LayoutNode("root-0-1-0", 26, 4, 90, 10), layout.getValue("root-0-1-0"))
+        assertEquals(LayoutNode("root-0-2-0", 57, 17, 59, 39), layout.getValue("root-0-2-0"))
+    }
+
+    @Test
+    fun resolveWithDiagnosticsReportsRowOverflow() {
+        val root =
+            ui(Modifier.size(40, 20)) {
+                row(gap = 5) {
+                    box(modifier = Modifier.size(30, 10))
+                    box(modifier = Modifier.size(30, 10))
+                }
+            }
+
+        val result = UiLayoutResolver(rootWidth = 40, rootHeight = 20).resolveWithDiagnostics(root)
+
+        assertEquals(1, result.diagnostics.size)
+        assertEquals(
+            LayoutDiagnostic.ContainerOverflow(
+                nodeId = "root-0",
+                axis = LayoutAxis.Horizontal,
+                available = 40,
+                required = 65,
+            ),
+            result.diagnostics.single(),
+        )
     }
 }

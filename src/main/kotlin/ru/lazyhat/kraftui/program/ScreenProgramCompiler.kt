@@ -52,9 +52,11 @@ class ScreenProgramCompiler(
         val effectiveRootWidth = if (rootWidth > 0) rootWidth else rootSize?.width ?: 0
         val effectiveRootHeight = if (rootHeight > 0) rootHeight else rootSize?.height ?: 0
 
-        val rootLayout =
+        val rootLayoutResult =
             UiLayoutResolver(effectiveRootWidth, effectiveRootHeight, fontMetrics)
-                .resolve(root, rootNodeId = "root", rootX = rootX, rootY = rootY)
+                .resolveWithDiagnostics(root, rootNodeId = "root", rootX = rootX, rootY = rootY)
+        val rootLayout = rootLayoutResult.nodes
+        diagnostics += rootLayoutResult.diagnostics.map { ScreenProgramDiagnostic.LayoutViolation(it) }
 
         val rootOps = mutableListOf<RenderOp>()
         frames += rootOps
@@ -249,6 +251,28 @@ class ScreenProgramCompiler(
                 }
             }
 
+            is UiElement.Grid -> {
+                element.cells.forEachIndexed { cellIndex, cell ->
+                    cell.children.forEachIndexed { childIndex, child ->
+                        lower(
+                            child,
+                            "$nodeId-$cellIndex-$childIndex",
+                            layout,
+                            ops,
+                            hitRegions,
+                            hoverRegions,
+                            tooltipRegions,
+                            frames,
+                            descriptors,
+                            focusNodes,
+                            scrollRegions,
+                            diagnostics,
+                            frameIndex,
+                        )
+                    }
+                }
+            }
+
             is UiElement.Text -> {
                 val overflow = element.modifier.findTextOverflow()?.policy ?: TextOverflowPolicy.FailInValidation
                 val metrics = fontMetrics
@@ -382,9 +406,11 @@ class ScreenProgramCompiler(
         val overlayWidth = size?.width ?: parentLayout["root"]?.width ?: 0
         val overlayHeight = size?.height ?: parentLayout["root"]?.height ?: 0
 
-        val subLayout =
+        val subLayoutResult =
             UiLayoutResolver(overlayWidth, overlayHeight, fontMetrics)
-                .resolve(element, rootNodeId = nodeId, rootX = 0, rootY = 0)
+                .resolveWithDiagnostics(element, rootNodeId = nodeId, rootX = 0, rootY = 0)
+        val subLayout = subLayoutResult.nodes
+        diagnostics += subLayoutResult.diagnostics.map { ScreenProgramDiagnostic.LayoutViolation(it) }
 
         val subOps = mutableListOf<RenderOp>()
         val subFrameIndex = frames.size
@@ -439,9 +465,11 @@ class ScreenProgramCompiler(
         parentOps += RenderOp.PushClip(outer.x, outer.y, outer.width, outer.height)
 
         // Resolve children's static layout in their own coordinate space (origin 0,0).
-        val subLayout =
+        val subLayoutResult =
             UiLayoutResolver(outer.width, outer.height, fontMetrics)
-                .resolve(element, rootNodeId = nodeId, rootX = 0, rootY = 0)
+                .resolveWithDiagnostics(element, rootNodeId = nodeId, rootX = 0, rootY = 0)
+        val subLayout = subLayoutResult.nodes
+        diagnostics += subLayoutResult.diagnostics.map { ScreenProgramDiagnostic.LayoutViolation(it) }
 
         // Sub-frame whose dynamic origin is (outer.x - scrollX, outer.y - scrollY).
         val subOps = mutableListOf<RenderOp>()

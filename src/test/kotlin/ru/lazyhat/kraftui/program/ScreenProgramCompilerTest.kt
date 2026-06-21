@@ -272,6 +272,24 @@ class ScreenProgramCompilerTest {
     }
 
     @Test
+    fun diagnosticReportFormatsLayoutAndTextProblems() {
+        val program =
+            ScreenProgramCompiler(fontMetrics = fontMetrics).compile(
+                ui(Modifier.size(40, 20)) {
+                    row(gap = 5) {
+                        text("too wide", modifier = Modifier.size(20, 9))
+                        box(modifier = Modifier.size(40, 10))
+                    }
+                },
+            )
+
+        val report = ScreenProgramDiagnosticReport(program.diagnostics).asText()
+
+        assertTrue("root-0: horizontal overflow, required 65 px, available 40 px" in report)
+        assertTrue("root-0-0: text overflow, text width 48 px, available 20 px" in report)
+    }
+
+    @Test
     fun runtimeEllipsizesTextUsingBackendMetrics() {
         val rendered = mutableListOf<String>()
         val program =
