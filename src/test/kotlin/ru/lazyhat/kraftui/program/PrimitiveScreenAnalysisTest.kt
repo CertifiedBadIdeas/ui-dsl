@@ -224,4 +224,60 @@ class PrimitiveScreenAnalysisTest {
             ),
         )
     }
+
+    @Test
+    fun analysisReportsInvalidBakedTextureReferences() {
+        val program =
+            PrimitiveScreenProgram(
+                renderInstructions =
+                    listOf(
+                        PrimitiveRenderInstruction(
+                            path = "panel",
+                            visible = null,
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.DrawBakedTexture(
+                                    x = 0,
+                                    y = 0,
+                                    width = 2,
+                                    height = 2,
+                                    textureId = "missing",
+                                ),
+                        ),
+                    ),
+                inputInstructions = emptyList(),
+                bakedTextures =
+                    listOf(
+                        PrimitiveBakedTexture(
+                            id = "duplicate",
+                            width = 1,
+                            height = 1,
+                            argb = intArrayOf(0xFF000000.toInt()),
+                        ),
+                        PrimitiveBakedTexture(
+                            id = "duplicate",
+                            width = 1,
+                            height = 1,
+                            argb = intArrayOf(0xFFFFFFFF.toInt()),
+                        ),
+                    ),
+            )
+
+        assertEquals(
+            PrimitiveProgramAnalysisReport(
+                diagnostics =
+                    listOf(
+                        PrimitiveProgramDiagnostic.DuplicateBakedTextureId(
+                            path = "bakedTextures/duplicate",
+                            textureId = "duplicate",
+                        ),
+                        PrimitiveProgramDiagnostic.MissingBakedTexture(
+                            path = "panel",
+                            textureId = "missing",
+                        ),
+                    ),
+            ),
+            program.analyze(),
+        )
+    }
 }

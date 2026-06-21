@@ -4,6 +4,7 @@ import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 
 class PrimitiveScreenOptimizerTest {
     @Test
@@ -288,6 +289,82 @@ class PrimitiveScreenOptimizerTest {
                 PrimitiveSkippedOptimization.PassDisabled(PrimitiveOptimizationPass.AdjacentFillMerging),
             ),
             result.report.skipped,
+        )
+    }
+
+    @Test
+    fun optimizerBakesStaticFillRunIntoTexture() {
+        val program =
+            PrimitiveScreenProgram(
+                renderInstructions =
+                    listOf(
+                        PrimitiveRenderInstruction(
+                            path = "background/left",
+                            visible = null,
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.FillRect(
+                                    x = 2,
+                                    y = 3,
+                                    width = 4,
+                                    height = 2,
+                                    color = PrimitiveValueExpression.Constant(Color.Red),
+                                ),
+                        ),
+                        PrimitiveRenderInstruction(
+                            path = "background/right",
+                            visible = null,
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.FillRect(
+                                    x = 6,
+                                    y = 3,
+                                    width = 2,
+                                    height = 2,
+                                    color = PrimitiveValueExpression.Constant(Color.Blue),
+                                ),
+                        ),
+                    ),
+                inputInstructions = emptyList(),
+            )
+
+        val result =
+            program.optimizePrimitive(
+                PrimitiveOptimizationOptions(
+                    passes = PrimitiveOptimizationPass.default + PrimitiveOptimizationPass.StaticTextureBaking,
+                    staticTextureBaking =
+                        PrimitiveStaticTextureBakingOptions.Enabled(
+                            minInstructionCount = 2,
+                            maxTexturePixels = 64,
+                        ),
+                ),
+            )
+
+        val bakedInstruction = result.program.renderInstructions.single()
+        val bakedOp = assertIs<PrimitiveRenderOp.DrawBakedTexture>(bakedInstruction.op)
+        assertEquals("background/left..background/right", bakedInstruction.path)
+        assertEquals(2, bakedOp.x)
+        assertEquals(3, bakedOp.y)
+        assertEquals(6, bakedOp.width)
+        assertEquals(2, bakedOp.height)
+        assertEquals("baked_0", bakedOp.textureId)
+
+        val texture = result.program.bakedTextures.single()
+        assertEquals("baked_0", texture.id)
+        assertEquals(6, texture.width)
+        assertEquals(2, texture.height)
+        assertEquals(Color.Red.value.toInt(), texture.argb[0])
+        assertEquals(Color.Blue.value.toInt(), texture.argb[4])
+        assertEquals(
+            PrimitiveAppliedOptimization.BakedStaticTexture(
+                textureId = "baked_0",
+                firstPath = "background/left",
+                lastPath = "background/right",
+                width = 6,
+                height = 2,
+                instructionCount = 2,
+            ),
+            result.report.applied.last(),
         )
     }
 

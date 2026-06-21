@@ -19,11 +19,12 @@ fun PrimitiveScreenProgram.render(
     backend: RenderBackend,
     resolve: (PrimitiveValueExpression) -> Any?,
 ) {
+    val bakedTextures = bakedTextures.associateBy { it.id }
     renderInstructions.forEach { instruction ->
         val visible = instruction.visible?.resolveAs<Boolean>(resolve) ?: true
         if (!visible) return@forEach
         val origin = instruction.origin?.resolveAs<Position>(resolve) ?: Position.Zero
-        instruction.op.render(backend, resolve, origin.x, origin.y)
+        instruction.op.render(backend, resolve, origin.x, origin.y, bakedTextures)
     }
 }
 
@@ -55,6 +56,7 @@ private fun PrimitiveRenderOp.render(
     resolve: (PrimitiveValueExpression) -> Any?,
     ox: Int,
     oy: Int,
+    bakedTextures: Map<String, PrimitiveBakedTexture>,
 ) {
     when (this) {
         is PrimitiveRenderOp.FillRect -> {
@@ -107,6 +109,20 @@ private fun PrimitiveRenderOp.render(
                 viewModel.resolveAs(resolve),
                 fontWidth,
                 fontHeight,
+            )
+        }
+        is PrimitiveRenderOp.DrawBakedTexture -> {
+            val texture =
+                bakedTextures[textureId]
+                    ?: error("Missing baked texture '$textureId'")
+            backend.drawBakedTexture(
+                x + ox,
+                y + oy,
+                width,
+                height,
+                texture.argb,
+                texture.width,
+                texture.height,
             )
         }
     }

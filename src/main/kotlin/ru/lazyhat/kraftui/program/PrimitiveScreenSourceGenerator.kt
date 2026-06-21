@@ -4,12 +4,38 @@ import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
 import ru.lazyhat.kraftui.foundation.modifier.TextOverflowPolicy
+import java.awt.image.BufferedImage
+import java.io.ByteArrayOutputStream
+import javax.imageio.ImageIO
 
 data class PrimitiveScreenSource(
     val packageName: String,
     val className: String,
     val source: String,
+    val assets: List<PrimitiveGeneratedAsset> = emptyList(),
 )
+
+data class PrimitiveGeneratedAsset(
+    val path: String,
+    val bytes: ByteArray,
+) {
+    init {
+        require(path.isNotBlank()) { "Generated asset path must not be blank" }
+        require(bytes.isNotEmpty()) { "Generated asset bytes must not be empty" }
+    }
+
+    override fun equals(other: Any?): Boolean =
+        this === other ||
+            other is PrimitiveGeneratedAsset &&
+            path == other.path &&
+            bytes.contentEquals(other.bytes)
+
+    override fun hashCode(): Int {
+        var result = path.hashCode()
+        result = 31 * result + bytes.contentHashCode()
+        return result
+    }
+}
 
 fun PrimitiveScreenProgram.generatePrimitiveScreenSource(
     packageName: String,
@@ -43,6 +69,12 @@ fun PrimitiveScreenProgram.generatePrimitiveScreenSource(
             appendLine("import ru.lazyhat.kraftui.text.TextLayouter")
             appendLine()
             appendLine("class $className {")
+            bakedTextures.forEach { texture ->
+                appendLine("    private val ${texture.id.kotlinIdentifier()}Pixels = ${texture.argb.kotlinIntArrayLiteral()}")
+            }
+            if (bakedTextures.isNotEmpty()) {
+                appendLine()
+            }
             appendLine("    fun render(target: RenderBackend, state: $stateType) {")
             renderInstructions.forEachIndexed { index, instruction ->
                 appendRenderInstruction(index, instruction)
@@ -119,6 +151,11 @@ private fun StringBuilder.appendPrimitiveRenderOp(
             appendLine("${indent}    ${op.fontWidth},")
             appendLine("${indent}    ${op.fontHeight},")
             appendLine("${indent})")
+        }
+        is PrimitiveRenderOp.DrawBakedTexture -> {
+            appendLine(
+                "${indent}target.drawBakedTexture(${op.x}$ox, ${op.y}$oy, ${op.width}, ${op.height}, ${op.textureId.kotlinIdentifier()}Pixels, ${op.width}, ${op.height})",
+            )
         }
     }
 }
@@ -218,6 +255,41 @@ private fun Color.kotlinLiteral(): String =
         Color.Blue -> "Color.Blue"
         else -> "Color.hex(0x${value.toLong().toString(16).uppercase()}u)"
     }
+
+internal fun IntArray.kotlinIntArrayLiteral(): String =
+    joinToString(
+        separator = ", ",
+        prefix = "intArrayOf(",
+        postfix = ")",
+    ) { "0x${it.toUInt().toString(16).uppercase().padStart(8, '0')}.toInt()" }
+
+internal fun PrimitiveBakedTexture.toPngBytes(): ByteArray {
+    val image = BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB)
+    image.setRGB(0, 0, width, height, argb, 0, width)
+    val output = ByteArrayOutputStream()
+    check(ImageIO.write(image, "png", output)) {
+        "No PNG writer is available"
+    }
+    return output.toByteArray()
+}
+
+internal fun PrimitiveBakedTexture.assetPath(options: PrimitiveStaticTextureBakingOptions.Enabled): String =
+    "assets/${options.textureNamespace}/${options.texturePathPrefix}/$id.png"
+
+internal fun String.kotlinIdentifier(): String {
+    require(isNotEmpty()) { "Identifier source must not be empty" }
+    return buildString {
+        this@kotlinIdentifier.forEachIndexed { index, char ->
+            val valid =
+                if (index == 0) {
+                    char == '_' || char.isLetter()
+                } else {
+                    char == '_' || char.isLetterOrDigit()
+                }
+            append(if (valid) char else '_')
+        }
+    }
+}
 
 private fun TextAlignment.kotlinExpression(): String =
     when (this) {

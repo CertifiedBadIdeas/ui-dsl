@@ -30,11 +30,14 @@ fun PrimitiveScreenProgram.generateMinecraftScreenSource(
         KotlinSourceFile(
             packageName = packageName,
             imports =
-                setOf(
-                    "net.minecraft.client.Minecraft",
-                    "net.minecraft.client.gui.Font",
-                    "net.minecraft.client.gui.GuiGraphics",
-                ),
+                buildSet {
+                    add("net.minecraft.client.Minecraft")
+                    add("net.minecraft.client.gui.Font")
+                    add("net.minecraft.client.gui.GuiGraphics")
+                    if (bakedTextures.isNotEmpty()) {
+                        add("net.minecraft.resources.ResourceLocation")
+                    }
+                },
             declarations =
                 listOf(
                     KotlinClassDeclaration(
@@ -48,7 +51,21 @@ fun PrimitiveScreenProgram.generateMinecraftScreenSource(
         packageName = packageName,
         className = className,
         source = source,
+        assets = minecraftBakedTextureAssets(optimization),
     )
+}
+
+private fun PrimitiveScreenProgram.minecraftBakedTextureAssets(optimization: PrimitiveOptimizationOptions): List<PrimitiveGeneratedAsset> {
+    if (bakedTextures.isEmpty()) return emptyList()
+    val bakingOptions =
+        optimization.staticTextureBaking as? PrimitiveStaticTextureBakingOptions.Enabled
+            ?: error("Minecraft source generation requires enabled static texture baking options for baked textures")
+    return bakedTextures.map { texture ->
+        PrimitiveGeneratedAsset(
+            path = texture.assetPath(bakingOptions),
+            bytes = texture.toPngBytes(),
+        )
+    }
 }
 
 private fun PrimitiveScreenProgram.rejectUnsupportedMinecraftOps() {
@@ -89,6 +106,15 @@ private fun PrimitiveScreenProgram.minecraftClassMembers(
         }
         if (precomputeHitRegions) {
             add(program.inputInstructions.minecraftHitRegionsMember())
+        }
+        program.bakedTextures.forEachIndexed { index, texture ->
+            add(
+                KotlinPropertyDeclaration(
+                    name = "${texture.id.kotlinIdentifier()}ResourceName",
+                    initializer = texture.minecraftResourceLocationExpression(optimization),
+                    modifiers = listOf("private"),
+                ),
+            )
         }
         add(
             KotlinFunctionDeclaration(
@@ -279,6 +305,12 @@ private fun PrimitiveRenderOp.minecraftRenderStatements(
         is PrimitiveRenderOp.DrawTerminalSurface,
         is PrimitiveRenderOp.DrawCodeEditor,
         -> error("unsupported Minecraft operation should have been rejected before generation")
+        is PrimitiveRenderOp.DrawBakedTexture ->
+            listOf(
+                KotlinStatement.Expression(
+                    "graphics.blit(${textureId.kotlinIdentifier()}ResourceName, $x$ox, $y$oy, 0.0f, 0.0f, $width, $height, $width, $height)",
+                ),
+            )
     }
 }
 
@@ -695,6 +727,13 @@ private fun Any?.minecraftColorLiteral(): String =
         is UInt -> "0x${toLong().toString(16).uppercase().padStart(8, '0')}.toInt()"
         else -> error("Cannot generate Minecraft color literal for ${this?.let { it::class.qualifiedName } ?: "null"}")
     }
+
+private fun PrimitiveBakedTexture.minecraftResourceLocationExpression(optimization: PrimitiveOptimizationOptions): String {
+    val bakingOptions =
+        optimization.staticTextureBaking as? PrimitiveStaticTextureBakingOptions.Enabled
+            ?: error("Minecraft source generation requires enabled static texture baking options for baked textures")
+    return "ResourceLocation.fromNamespaceAndPath(\"${bakingOptions.textureNamespace}\", \"${bakingOptions.texturePathPrefix}/$id.png\")"
+}
 
 private fun TextAlignment.kotlinExpression(): String =
     when (this) {

@@ -19,6 +19,31 @@ interface RenderBackend {
         color: Color,
     )
 
+    fun drawBakedTexture(
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        argb: IntArray,
+        textureWidth: Int,
+        textureHeight: Int,
+    ) {
+        require(width == textureWidth && height == textureHeight) {
+            "Scaled baked textures are not supported by the generic render backend"
+        }
+        require(argb.size == textureWidth * textureHeight) {
+            "Baked texture pixel count must be exactly textureWidth * textureHeight"
+        }
+        for (py in 0 until textureHeight) {
+            for (px in 0 until textureWidth) {
+                val color = argb[py * textureWidth + px]
+                if ((color ushr 24) != 0) {
+                    fillRect(x + px, y + py, 1, 1, Color.hex(color))
+                }
+            }
+        }
+    }
+
     fun drawTerminalSurface(
         x: Int,
         y: Int,

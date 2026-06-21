@@ -85,6 +85,16 @@ sealed interface PrimitiveProgramDiagnostic {
         val operation: String,
     ) : PrimitiveProgramDiagnostic
 
+    data class MissingBakedTexture(
+        override val path: String,
+        val textureId: String,
+    ) : PrimitiveProgramDiagnostic
+
+    data class DuplicateBakedTextureId(
+        override val path: String,
+        val textureId: String,
+    ) : PrimitiveProgramDiagnostic
+
     data class UnreachableInputRegion(
         override val path: String,
         val reason: String,
@@ -100,9 +110,19 @@ sealed interface PrimitiveProgramDiagnostic {
 
 fun PrimitiveScreenProgram.analyze(options: PrimitiveProgramAnalysisOptions = PrimitiveProgramAnalysisOptions()): PrimitiveProgramAnalysisReport {
     val diagnostics = ArrayList<PrimitiveProgramDiagnostic>()
+    val duplicateBakedTextureIds = bakedTextures.groupingBy { it.id }.eachCount().filterValues { it > 1 }.keys
+    duplicateBakedTextureIds.forEach { textureId ->
+        diagnostics.add(
+            PrimitiveProgramDiagnostic.DuplicateBakedTextureId(
+                path = "bakedTextures/$textureId",
+                textureId = textureId,
+            ),
+        )
+    }
+    val bakedTextureIds = bakedTextures.mapTo(HashSet()) { it.id }
 
     renderInstructions.forEach { instruction ->
-        diagnostics.analyzeRenderInstruction(instruction, options)
+        diagnostics.analyzeRenderInstruction(instruction, options, bakedTextureIds)
     }
     inputInstructions.forEach { instruction ->
         diagnostics.analyzeInputInstruction(instruction)
@@ -117,6 +137,7 @@ fun PrimitiveScreenProgram.analyze(options: PrimitiveProgramAnalysisOptions = Pr
 private fun MutableList<PrimitiveProgramDiagnostic>.analyzeRenderInstruction(
     instruction: PrimitiveRenderInstruction,
     options: PrimitiveProgramAnalysisOptions,
+    bakedTextureIds: Set<String>,
 ) {
     when (val op = instruction.op) {
         is PrimitiveRenderOp.FillRect -> {
@@ -150,6 +171,17 @@ private fun MutableList<PrimitiveProgramDiagnostic>.analyzeRenderInstruction(
                         path = instruction.path,
                         target = options.target.name,
                         operation = "DrawCodeEditor",
+                    ),
+                )
+            }
+        }
+        is PrimitiveRenderOp.DrawBakedTexture -> {
+            requireValidRenderBounds(instruction.path, op.width, op.height)
+            if (op.textureId !in bakedTextureIds) {
+                add(
+                    PrimitiveProgramDiagnostic.MissingBakedTexture(
+                        path = instruction.path,
+                        textureId = op.textureId,
                     ),
                 )
             }
@@ -320,6 +352,10 @@ private fun PrimitiveProgramDiagnostic.asText(): String =
             "$path: dynamic text requires runtime-safe overflow policy, policy $policy"
         is PrimitiveProgramDiagnostic.UnsupportedTargetOperation ->
             "$path: target $target does not support $operation"
+        is PrimitiveProgramDiagnostic.MissingBakedTexture ->
+            "$path: missing baked texture $textureId"
+        is PrimitiveProgramDiagnostic.DuplicateBakedTextureId ->
+            "$path: duplicate baked texture id $textureId"
         is PrimitiveProgramDiagnostic.UnreachableInputRegion ->
             "$path: unreachable input region, $reason"
         is PrimitiveProgramDiagnostic.OverlappingInputRegions ->

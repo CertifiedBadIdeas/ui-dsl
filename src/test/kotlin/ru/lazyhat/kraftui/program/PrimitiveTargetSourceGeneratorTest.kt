@@ -161,10 +161,38 @@ class PrimitiveTargetSourceGeneratorTest {
     }
 
     @Test
-    fun targetGeneratorWarnsAboutUnsupportedOptimizationPasses() {
+    fun targetGeneratorBakesStaticTexturesWhenEnabled() {
         val program =
             PrimitiveScreenProgram(
-                renderInstructions = emptyList(),
+                renderInstructions =
+                    listOf(
+                        PrimitiveRenderInstruction(
+                            path = "left",
+                            visible = null,
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.FillRect(
+                                    x = 0,
+                                    y = 0,
+                                    width = 2,
+                                    height = 2,
+                                    color = PrimitiveValueExpression.Constant(Color.Red),
+                                ),
+                        ),
+                        PrimitiveRenderInstruction(
+                            path = "right",
+                            visible = null,
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.FillRect(
+                                    x = 2,
+                                    y = 0,
+                                    width = 2,
+                                    height = 2,
+                                    color = PrimitiveValueExpression.Constant(Color.Blue),
+                                ),
+                        ),
+                    ),
                 inputInstructions = emptyList(),
             )
 
@@ -173,19 +201,32 @@ class PrimitiveTargetSourceGeneratorTest {
                 target = PrimitiveSourceTargets.minecraftGuiGraphics,
                 request =
                     request("GeneratedMinecraft").copy(
+                        actionType = "String",
                         optimization =
                             PrimitiveOptimizationOptions(
                                 passes = PrimitiveOptimizationPass.default + PrimitiveOptimizationPass.StaticTextureBaking,
+                                staticTextureBaking =
+                                    PrimitiveStaticTextureBakingOptions.Enabled(
+                                        minInstructionCount = 2,
+                                        textureNamespace = "testmod",
+                                        texturePathPrefix = "textures/gui/generated",
+                                    ),
                             ),
                     ),
             )
 
         assertTrue(
-            PrimitiveOptimizationWarning.UnsupportedPass(
-                pass = PrimitiveOptimizationPass.StaticTextureBaking,
-                targetId = "minecraft-gui-graphics",
-            ) in result.optimizationReport.warnings,
+            PrimitiveAppliedOptimization.BakedStaticTexture(
+                textureId = "baked_0",
+                firstPath = "left",
+                lastPath = "right",
+                width = 4,
+                height = 2,
+                instructionCount = 2,
+            ) in result.optimizationReport.applied,
         )
+        assertEquals(1, result.optimizedProgram.bakedTextures.size)
+        assertEquals("assets/testmod/textures/gui/generated/baked_0.png", result.source.assets.single().path)
     }
 
     @Test

@@ -101,18 +101,8 @@ private fun PrimitiveScreenProgram.sourceOptimizationReport(
 
     val applied = mutableListOf<PrimitiveAppliedOptimization>()
     val skipped = mutableListOf<PrimitiveSkippedOptimization>()
-    val warnings = mutableListOf<PrimitiveOptimizationWarning>()
-
-    if (options.enables(PrimitiveOptimizationPass.StaticTextureBaking)) {
-        warnings +=
-            PrimitiveOptimizationWarning.UnsupportedPass(
-                pass = PrimitiveOptimizationPass.StaticTextureBaking,
-                targetId = target.id,
-            )
-    }
-
     if (target != PrimitiveSourceTargets.minecraftGuiGraphics) {
-        return PrimitiveOptimizationReport(warnings = warnings)
+        return PrimitiveOptimizationReport()
     }
 
     val drawTextInstructionCount =
@@ -151,7 +141,6 @@ private fun PrimitiveScreenProgram.sourceOptimizationReport(
     return PrimitiveOptimizationReport(
         applied = applied,
         skipped = skipped,
-        warnings = warnings,
     )
 }
 

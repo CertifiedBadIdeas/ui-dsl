@@ -7,7 +7,40 @@ import ru.lazyhat.kraftui.text.TextFlow
 data class PrimitiveScreenProgram(
     val renderInstructions: List<PrimitiveRenderInstruction>,
     val inputInstructions: List<PrimitiveInputInstruction>,
+    val bakedTextures: List<PrimitiveBakedTexture> = emptyList(),
 )
+
+data class PrimitiveBakedTexture(
+    val id: String,
+    val width: Int,
+    val height: Int,
+    val argb: IntArray,
+) {
+    init {
+        require(id.isNotBlank()) { "Baked texture id must not be blank" }
+        require(width > 0) { "Baked texture width must be positive" }
+        require(height > 0) { "Baked texture height must be positive" }
+        require(argb.size == width * height) {
+            "Baked texture pixel count must be exactly width * height"
+        }
+    }
+
+    override fun equals(other: Any?): Boolean =
+        this === other ||
+            other is PrimitiveBakedTexture &&
+            id == other.id &&
+            width == other.width &&
+            height == other.height &&
+            argb.contentEquals(other.argb)
+
+    override fun hashCode(): Int {
+        var result = id.hashCode()
+        result = 31 * result + width
+        result = 31 * result + height
+        result = 31 * result + argb.contentHashCode()
+        return result
+    }
+}
 
 val PrimitiveScreenProgram.dependencies: PrimitiveProgramDependencies
     get() =
@@ -114,6 +147,14 @@ sealed interface PrimitiveRenderOp {
         val fontWidth: Int,
         val fontHeight: Int,
     ) : PrimitiveRenderOp
+
+    data class DrawBakedTexture(
+        val x: Int,
+        val y: Int,
+        val width: Int,
+        val height: Int,
+        val textureId: String,
+    ) : PrimitiveRenderOp
 }
 
 val PrimitiveRenderOp.dependencies: PrimitiveProgramDependencies
@@ -127,6 +168,7 @@ val PrimitiveRenderOp.dependencies: PrimitiveProgramDependencies
             is PrimitiveRenderOp.PushClip -> PrimitiveProgramDependencies.Static
             PrimitiveRenderOp.PopClip -> PrimitiveProgramDependencies.Static
             is PrimitiveRenderOp.DrawCodeEditor -> viewModel.primitiveDependency(PrimitiveProgramDependencies.DynamicValue)
+            is PrimitiveRenderOp.DrawBakedTexture -> PrimitiveProgramDependencies.Static
         }
 
 sealed interface PrimitiveInputInstruction {

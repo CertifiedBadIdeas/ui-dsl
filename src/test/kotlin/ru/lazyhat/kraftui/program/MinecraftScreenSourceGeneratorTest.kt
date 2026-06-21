@@ -319,6 +319,67 @@ class MinecraftScreenSourceGeneratorTest {
     }
 
     @Test
+    fun minecraftSourceDrawsBakedTextureAssets() {
+        val primitive =
+            PrimitiveScreenProgram(
+                renderInstructions = emptyList(),
+                inputInstructions = emptyList(),
+                bakedTextures =
+                    listOf(
+                        PrimitiveBakedTexture(
+                            id = "baked_0",
+                            width = 2,
+                            height = 1,
+                            argb = intArrayOf(Color.Red.value.toInt(), Color.Blue.value.toInt()),
+                        ),
+                    ),
+            ).copy(
+                renderInstructions =
+                    listOf(
+                        PrimitiveRenderInstruction(
+                            path = "baked",
+                            visible = null,
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.DrawBakedTexture(
+                                    x = 4,
+                                    y = 5,
+                                    width = 2,
+                                    height = 1,
+                                    textureId = "baked_0",
+                                ),
+                        ),
+                    ),
+            )
+
+        val generated =
+            primitive.generateMinecraftScreenSource(
+                packageName = "ru.lazyhat.generated",
+                className = "GeneratedMinecraftScreen",
+                stateType = "ScreenState",
+                actionType = "String",
+                optimization =
+                    PrimitiveOptimizationOptions(
+                        passes = PrimitiveOptimizationPass.default + PrimitiveOptimizationPass.StaticTextureBaking,
+                        staticTextureBaking =
+                            PrimitiveStaticTextureBakingOptions.Enabled(
+                                textureNamespace = "testmod",
+                                texturePathPrefix = "textures/gui/generated",
+                            ),
+                    ),
+            )
+
+        assertTrue("import net.minecraft.resources.ResourceLocation" in generated.source)
+        assertTrue(
+            "ResourceLocation.fromNamespaceAndPath(\"testmod\", \"textures/gui/generated/baked_0.png\")" in
+                generated.source,
+        )
+        assertTrue("graphics.blit(baked_0ResourceName, 4, 5, 0.0f, 0.0f, 2, 1, 2, 1)" in generated.source)
+        assertEquals("assets/testmod/textures/gui/generated/baked_0.png", generated.assets.single().path)
+        assertEquals(0x89.toByte(), generated.assets.single().bytes.first())
+    }
+
+    @Test
     fun minecraftSourceRejectsUnsupportedTargetOperationsThroughAnalysis() {
         val primitive =
             PrimitiveScreenProgram(

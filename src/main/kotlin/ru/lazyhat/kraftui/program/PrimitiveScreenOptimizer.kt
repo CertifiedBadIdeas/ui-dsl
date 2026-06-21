@@ -1,13 +1,35 @@
 package ru.lazyhat.kraftui.program
 
+import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.modifier.Position
 
 data class PrimitiveOptimizationOptions(
     val enabled: Boolean = true,
     val passes: Set<PrimitiveOptimizationPass> = PrimitiveOptimizationPass.default,
     val disabledRegions: Set<String> = emptySet(),
+    val staticTextureBaking: PrimitiveStaticTextureBakingOptions = PrimitiveStaticTextureBakingOptions.Disabled,
 ) {
     fun enables(pass: PrimitiveOptimizationPass): Boolean = enabled && pass in passes
+}
+
+sealed interface PrimitiveStaticTextureBakingOptions {
+    data object Disabled : PrimitiveStaticTextureBakingOptions
+
+    data class Enabled(
+        val minInstructionCount: Int = 8,
+        val maxTexturePixels: Int = 256 * 256,
+        val textureNamespace: String = "kraftui",
+        val texturePathPrefix: String = "textures/gui/generated",
+    ) : PrimitiveStaticTextureBakingOptions {
+        init {
+            require(minInstructionCount > 1) { "Static texture baking minInstructionCount must be greater than one" }
+            require(maxTexturePixels > 0) { "Static texture baking maxTexturePixels must be positive" }
+            require(textureNamespace.isNotBlank()) { "Static texture baking textureNamespace must not be blank" }
+            require(texturePathPrefix.isNotBlank()) { "Static texture baking texturePathPrefix must not be blank" }
+            require(!texturePathPrefix.startsWith('/')) { "Static texture baking texturePathPrefix must be relative" }
+            require(!texturePathPrefix.endsWith('/')) { "Static texture baking texturePathPrefix must not end with '/'" }
+        }
+    }
 }
 
 enum class PrimitiveOptimizationPass {
@@ -109,6 +131,15 @@ sealed interface PrimitiveAppliedOptimization : PrimitiveOptimizationEntry {
     data class PrecomputedHitRegions(
         val regionCount: Int,
     ) : PrimitiveAppliedOptimization
+
+    data class BakedStaticTexture(
+        val textureId: String,
+        val firstPath: String,
+        val lastPath: String,
+        val width: Int,
+        val height: Int,
+        val instructionCount: Int,
+    ) : PrimitiveAppliedOptimization
 }
 
 sealed interface PrimitiveSkippedOptimization : PrimitiveOptimizationEntry {
@@ -142,7 +173,7 @@ fun PrimitiveScreenProgram.optimizePrimitive(options: PrimitiveOptimizationOptio
     }
 
     val report = PrimitiveOptimizationReportBuilder(options)
-    val optimizedRenderInstructions =
+    val optimizedRenderInstructionsBeforeBaking =
         renderInstructions.mapNotNull { instruction ->
             if (instruction.path in options.disabledRegions) {
                 report.skipped += PrimitiveSkippedOptimization.SkippedByRegion(instruction.path)
@@ -161,6 +192,18 @@ fun PrimitiveScreenProgram.optimizePrimitive(options: PrimitiveOptimizationOptio
             }
         }
 
+    val bakedRender =
+        if (options.enables(PrimitiveOptimizationPass.StaticTextureBaking)) {
+            optimizedRenderInstructionsBeforeBaking.bakeStaticTextures(
+                options = options.staticTextureBaking,
+                disabledRegions = options.disabledRegions,
+                firstTextureIndex = bakedTextures.size,
+                report = report,
+            )
+        } else {
+            StaticTextureBakeResult(optimizedRenderInstructionsBeforeBaking, emptyList())
+        }
+
     val optimizedInputInstructions =
         inputInstructions.mapNotNull { instruction ->
             val path = instruction.path()
@@ -176,8 +219,9 @@ fun PrimitiveScreenProgram.optimizePrimitive(options: PrimitiveOptimizationOptio
     return PrimitiveOptimizationResult(
         program =
             PrimitiveScreenProgram(
-                renderInstructions = optimizedRenderInstructions,
+                renderInstructions = bakedRender.instructions,
                 inputInstructions = optimizedInputInstructions,
+                bakedTextures = bakedTextures + bakedRender.textures,
             ),
         report = report.build(),
     )
@@ -360,6 +404,141 @@ private fun PrimitiveRenderInstruction.mergeWith(other: PrimitiveRenderInstructi
     )
 }
 
+private data class StaticTextureBakeResult(
+    val instructions: List<PrimitiveRenderInstruction>,
+    val textures: List<PrimitiveBakedTexture>,
+)
+
+private data class StaticTextureBakeCandidate(
+    val instruction: PrimitiveRenderInstruction,
+    val fill: PrimitiveRenderOp.FillRect,
+    val color: Color,
+)
+
+private fun List<PrimitiveRenderInstruction>.bakeStaticTextures(
+    options: PrimitiveStaticTextureBakingOptions,
+    disabledRegions: Set<String>,
+    firstTextureIndex: Int,
+    report: PrimitiveOptimizationReportBuilder,
+): StaticTextureBakeResult {
+    if (options !is PrimitiveStaticTextureBakingOptions.Enabled) {
+        return StaticTextureBakeResult(this, emptyList())
+    }
+
+    val instructions = ArrayList<PrimitiveRenderInstruction>(size)
+    val textures = ArrayList<PrimitiveBakedTexture>()
+    var index = 0
+    while (index < size) {
+        val run = ArrayList<StaticTextureBakeCandidate>()
+        var cursor = index
+        while (cursor < size) {
+            val candidate = this[cursor].staticTextureBakeCandidate(disabledRegions) ?: break
+            run += candidate
+            cursor++
+        }
+
+        val baked = run.tryBake(
+            options = options,
+            textureId = "baked_${firstTextureIndex + textures.size}",
+            report = report,
+        )
+        if (baked == null) {
+            instructions += this[index]
+            index++
+        } else {
+            instructions += baked.instruction
+            textures += baked.texture
+            index += run.size
+        }
+    }
+
+    return StaticTextureBakeResult(instructions, textures)
+}
+
+private data class BakedStaticRun(
+    val instruction: PrimitiveRenderInstruction,
+    val texture: PrimitiveBakedTexture,
+)
+
+private fun PrimitiveRenderInstruction.staticTextureBakeCandidate(disabledRegions: Set<String>): StaticTextureBakeCandidate? {
+    if (path in disabledRegions || visible != null || origin != null) return null
+    val fill = op as? PrimitiveRenderOp.FillRect ?: return null
+    val color = fill.color.asConstantColor() ?: return null
+    if (fill.width <= 0 || fill.height <= 0) return null
+    return StaticTextureBakeCandidate(
+        instruction = this,
+        fill = fill,
+        color = color,
+    )
+}
+
+private fun List<StaticTextureBakeCandidate>.tryBake(
+    options: PrimitiveStaticTextureBakingOptions.Enabled,
+    textureId: String,
+    report: PrimitiveOptimizationReportBuilder,
+): BakedStaticRun? {
+    if (size < options.minInstructionCount) return null
+    val left = minOf { it.fill.x }
+    val top = minOf { it.fill.y }
+    val right = maxOf { it.fill.x + it.fill.width }
+    val bottom = maxOf { it.fill.y + it.fill.height }
+    val width = right - left
+    val height = bottom - top
+    val pixelCount = width.toLong() * height.toLong()
+    if (width <= 0 || height <= 0 || pixelCount > options.maxTexturePixels) return null
+
+    val pixels = IntArray(width * height)
+    for (candidate in this) {
+        val fill = candidate.fill
+        val color = candidate.color.value.toInt()
+        for (py in fill.y until fill.y + fill.height) {
+            val row = (py - top) * width
+            for (px in fill.x until fill.x + fill.width) {
+                pixels[row + (px - left)] = color
+            }
+        }
+    }
+
+    val first = first().instruction
+    val last = last().instruction
+    report.applied +=
+        PrimitiveAppliedOptimization.BakedStaticTexture(
+            textureId = textureId,
+            firstPath = first.path,
+            lastPath = last.path,
+            width = width,
+            height = height,
+            instructionCount = size,
+        )
+
+    return BakedStaticRun(
+        instruction =
+            PrimitiveRenderInstruction(
+                path = "${first.path}..${last.path}",
+                visible = null,
+                origin = null,
+                op =
+                    PrimitiveRenderOp.DrawBakedTexture(
+                        x = left,
+                        y = top,
+                        width = width,
+                        height = height,
+                        textureId = textureId,
+                    ),
+            ),
+        texture =
+            PrimitiveBakedTexture(
+                id = textureId,
+                width = width,
+                height = height,
+                argb = pixels,
+            ),
+    )
+}
+
+private fun PrimitiveValueExpression.asConstantColor(): Color? =
+    (this as? PrimitiveValueExpression.Constant)?.value as? Color
+
 private fun PrimitiveValueExpression?.asConstantPosition(): Position? =
     (this as? PrimitiveValueExpression.Constant)?.value as? Position
 
@@ -374,4 +553,5 @@ private fun PrimitiveRenderOp.shifted(
         is PrimitiveRenderOp.PushClip -> copy(x = x + dx, y = y + dy)
         PrimitiveRenderOp.PopClip -> this
         is PrimitiveRenderOp.DrawCodeEditor -> copy(x = x + dx, y = y + dy)
+        is PrimitiveRenderOp.DrawBakedTexture -> copy(x = x + dx, y = y + dy)
     }
