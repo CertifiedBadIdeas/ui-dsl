@@ -4,6 +4,7 @@ import ru.lazyhat.kraftui.editor.EditorViewModel
 import ru.lazyhat.kraftui.foundation.modifier.Modifier
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.UiAlignment
+import ru.lazyhat.kraftui.foundation.modifier.UiPercent
 import ru.lazyhat.kraftui.foundation.modifier.focusable
 
 sealed interface UiElement<out Action> {
@@ -136,6 +137,10 @@ data class FixedGridTrack(
         require(pixels >= 0) { "fixed grid track must be non-negative" }
     }
 }
+
+data class PercentGridTrack(
+    val percent: UiPercent,
+) : GridTrack
 
 data class WeightedGridTrack(
     val weight: Float,

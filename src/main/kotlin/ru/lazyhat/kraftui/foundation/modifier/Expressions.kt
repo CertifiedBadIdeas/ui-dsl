@@ -70,6 +70,26 @@ data class SizeModifier(
     val size: IntSize,
 ) : Modifier.Element
 
+@JvmInline
+value class UiPercent(
+    val fraction: Float,
+) {
+    init {
+        require(fraction.isFinite() && fraction >= 0f && fraction <= 1f) {
+            "percent must be finite and in range 0..100"
+        }
+    }
+}
+
+val Int.percent: UiPercent
+    get() = UiPercent(this / 100f)
+
+val Float.percent: UiPercent
+    get() = UiPercent(this / 100f)
+
+val Double.percent: UiPercent
+    get() = UiPercent((this / 100.0).toFloat())
+
 fun Modifier.size(size: IntSize) = then(SizeModifier(size))
 
 fun Modifier.size(
@@ -84,6 +104,10 @@ fun Modifier.findSize() = find<SizeModifier>()
 sealed interface AxisSize {
     data class Fixed(
         val pixels: Int,
+    ) : AxisSize
+
+    data class Percent(
+        val percent: UiPercent,
     ) : AxisSize
 
     data object Fill : AxisSize
@@ -102,10 +126,14 @@ fun Modifier.width(width: Int): Modifier {
     return then(WidthModifier(AxisSize.Fixed(width)))
 }
 
+fun Modifier.width(width: UiPercent): Modifier = then(WidthModifier(AxisSize.Percent(width)))
+
 fun Modifier.height(height: Int): Modifier {
     require(height >= 0)
     return then(HeightModifier(AxisSize.Fixed(height)))
 }
+
+fun Modifier.height(height: UiPercent): Modifier = then(HeightModifier(AxisSize.Percent(height)))
 
 fun Modifier.fillMaxWidth(): Modifier = then(WidthModifier(AxisSize.Fill))
 

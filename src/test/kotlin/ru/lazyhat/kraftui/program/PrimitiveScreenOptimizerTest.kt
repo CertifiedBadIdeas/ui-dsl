@@ -8,6 +8,42 @@ import kotlin.test.assertIs
 
 class PrimitiveScreenOptimizerTest {
     @Test
+    fun optimizationReportTextIncludesAppliedSkippedAndWarnings() {
+        val report =
+            PrimitiveOptimizationReport(
+                applied =
+                    listOf(
+                        PrimitiveAppliedOptimization.CachedTextLayout(drawTextInstructionCount = 3),
+                    ),
+                skipped =
+                    listOf(
+                        PrimitiveSkippedOptimization.PassDisabled(PrimitiveOptimizationPass.StaticTextureBaking),
+                    ),
+                warnings =
+                    listOf(
+                        PrimitiveOptimizationWarning.UnsupportedPass(
+                            pass = PrimitiveOptimizationPass.StaticTextureBaking,
+                            targetId = "preview",
+                        ),
+                    ),
+            )
+
+        assertEquals(
+            """
+            Applied optimizations:
+              enabled text layout cache for 3 text instructions
+
+            Skipped optimizations:
+              pass disabled: StaticTextureBaking
+
+            Warnings:
+              unsupported pass StaticTextureBaking for target preview
+            """.trimIndent() + "\n",
+            report.asText(),
+        )
+    }
+
+    @Test
     fun optimizerRemovesAlwaysInvisibleInstructionsAndFoldsConstantOrigins() {
         val program =
             PrimitiveScreenProgram(

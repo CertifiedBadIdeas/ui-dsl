@@ -11,9 +11,11 @@ import ru.lazyhat.kraftui.foundation.modifier.size
 import ru.lazyhat.kraftui.foundation.modifier.weight
 import ru.lazyhat.kraftui.foundation.modifier.width
 import ru.lazyhat.kraftui.foundation.FixedGridTrack
+import ru.lazyhat.kraftui.foundation.PercentGridTrack
 import ru.lazyhat.kraftui.foundation.WeightedGridTrack
 import ru.lazyhat.kraftui.foundation.ui
 import ru.lazyhat.kraftui.foundation.value
+import ru.lazyhat.kraftui.foundation.modifier.percent
 import ru.lazyhat.kraftui.program.FontMetrics
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -118,6 +120,22 @@ class UiLayoutResolverTest {
     }
 
     @Test
+    fun percentWidthComposesWithParentContentWidth() {
+        val root =
+            ui {
+                row(modifier = Modifier.size(200, 40).padding(10)) {
+                    box(modifier = Modifier.width(50.percent).height(20))
+                    box(modifier = Modifier.weight(1f).height(20))
+                }
+            }
+
+        val layout = UiLayoutResolver(rootWidth = 200, rootHeight = 40).resolve(root)
+
+        assertEquals(LayoutNode("root-0-0", 10, 10, 90, 20), layout.getValue("root-0-0"))
+        assertEquals(LayoutNode("root-0-1", 100, 10, 90, 20), layout.getValue("root-0-1"))
+    }
+
+    @Test
     fun rowGapAddsSpacingBetweenFlowChildren() {
         val root =
             ui {
@@ -191,6 +209,35 @@ class UiLayoutResolverTest {
         assertEquals(LayoutNode("root-0-0-0", 4, 4, 20, 10), layout.getValue("root-0-0-0"))
         assertEquals(LayoutNode("root-0-1-0", 26, 4, 90, 10), layout.getValue("root-0-1-0"))
         assertEquals(LayoutNode("root-0-2-0", 57, 17, 59, 39), layout.getValue("root-0-2-0"))
+    }
+
+    @Test
+    fun gridResolvesPercentTracksBeforeWeightedRemainder() {
+        val root =
+            ui {
+                grid(
+                    modifier = Modifier.size(200, 40).padding(10),
+                    columns = listOf(PercentGridTrack(25.percent), WeightedGridTrack(1f), PercentGridTrack(25.percent)),
+                    rows = listOf(WeightedGridTrack(1f)),
+                    columnGap = 10,
+                ) {
+                    cell(column = 0, row = 0) {
+                        box(modifier = Modifier.fillMaxWidth().fillMaxHeight())
+                    }
+                    cell(column = 1, row = 0) {
+                        box(modifier = Modifier.fillMaxWidth().fillMaxHeight())
+                    }
+                    cell(column = 2, row = 0) {
+                        box(modifier = Modifier.fillMaxWidth().fillMaxHeight())
+                    }
+                }
+            }
+
+        val layout = UiLayoutResolver(rootWidth = 200, rootHeight = 40).resolve(root)
+
+        assertEquals(LayoutNode("root-0-0-0", 10, 10, 40, 20), layout.getValue("root-0-0-0"))
+        assertEquals(LayoutNode("root-0-1-0", 60, 10, 80, 20), layout.getValue("root-0-1-0"))
+        assertEquals(LayoutNode("root-0-2-0", 150, 10, 40, 20), layout.getValue("root-0-2-0"))
     }
 
     @Test

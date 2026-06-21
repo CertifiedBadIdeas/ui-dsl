@@ -3,6 +3,7 @@ package ru.lazyhat.kraftui.layout
 import ru.lazyhat.kraftui.foundation.UiElement
 import ru.lazyhat.kraftui.foundation.FixedGridTrack
 import ru.lazyhat.kraftui.foundation.GridTrack
+import ru.lazyhat.kraftui.foundation.PercentGridTrack
 import ru.lazyhat.kraftui.foundation.WeightedGridTrack
 import ru.lazyhat.kraftui.foundation.modifier.AxisSize
 import ru.lazyhat.kraftui.foundation.modifier.Modifier
@@ -553,10 +554,12 @@ class UiLayoutResolver(
         diagnostics: MutableList<LayoutDiagnostic>,
     ): List<Int> {
         val gapSize = gap * (tracks.size - 1).coerceAtLeast(0)
+        val trackSpace = (available - gapSize).coerceAtLeast(0)
         val fixedSize =
             tracks.sumOf {
                 when (it) {
                     is FixedGridTrack -> it.pixels
+                    is PercentGridTrack -> (trackSpace * it.percent.fraction).toInt()
                     is WeightedGridTrack -> 0
                 }
             } + gapSize
@@ -575,6 +578,7 @@ class UiLayoutResolver(
             tracks.sumOf {
                 when (it) {
                     is FixedGridTrack -> 0.0
+                    is PercentGridTrack -> 0.0
                     is WeightedGridTrack -> it.weight.toDouble()
                 }
             }.toFloat()
@@ -585,6 +589,7 @@ class UiLayoutResolver(
         return tracks.map { track ->
             when (track) {
                 is FixedGridTrack -> track.pixels
+                is PercentGridTrack -> (trackSpace * track.percent.fraction).toInt()
                 is WeightedGridTrack -> {
                     weightedIndex += 1
                     if (weightedIndex == weightedTracks) {
@@ -708,6 +713,7 @@ class UiLayoutResolver(
     ): Int? =
         when (val width = element.modifier.findWidth()?.width) {
             is AxisSize.Fixed -> width.pixels
+            is AxisSize.Percent -> (fallbackWidth * width.percent.fraction).toInt()
             AxisSize.Fill -> fallbackWidth
             null -> element.modifier.findSize()?.size?.width
         }
@@ -718,6 +724,7 @@ class UiLayoutResolver(
     ): Int? =
         when (val height = element.modifier.findHeight()?.height) {
             is AxisSize.Fixed -> height.pixels
+            is AxisSize.Percent -> (fallbackHeight * height.percent.fraction).toInt()
             AxisSize.Fill -> fallbackHeight
             null -> element.modifier.findSize()?.size?.height
         }

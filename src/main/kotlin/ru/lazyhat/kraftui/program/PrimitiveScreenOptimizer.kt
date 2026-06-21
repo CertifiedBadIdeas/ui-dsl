@@ -93,6 +93,27 @@ data class PrimitiveOptimizationReport(
             skipped = skipped + other.skipped,
             warnings = warnings + other.warnings,
         )
+
+    fun asText(): String =
+        buildString {
+            appendSection("Applied optimizations", applied)
+            appendLine()
+            appendSection("Skipped optimizations", skipped)
+            appendLine()
+            appendSection("Warnings", warnings)
+        }
+
+    private fun StringBuilder.appendSection(
+        title: String,
+        entries: List<PrimitiveOptimizationEntry>,
+    ) {
+        appendLine("$title:")
+        if (entries.isEmpty()) {
+            appendLine("  none")
+        } else {
+            entries.forEach { entry -> appendLine("  ${entry.asText()}") }
+        }
+    }
 }
 
 sealed interface PrimitiveOptimizationEntry
@@ -160,6 +181,34 @@ sealed interface PrimitiveOptimizationWarning : PrimitiveOptimizationEntry {
         val targetId: String,
     ) : PrimitiveOptimizationWarning
 }
+
+private fun PrimitiveOptimizationEntry.asText(): String =
+    when (this) {
+        is PrimitiveAppliedOptimization.RemovedAlwaysInvisibleInstruction ->
+            "removed always-invisible instruction at $path"
+        is PrimitiveAppliedOptimization.FoldedConstantVisibility ->
+            "folded constant visibility at $path to $visible"
+        is PrimitiveAppliedOptimization.FoldedConstantOrigin ->
+            "folded constant origin at $path to ($x, $y)"
+        is PrimitiveAppliedOptimization.MergedAdjacentFills ->
+            "merged adjacent fills $firstPath and $secondPath into $mergedPath"
+        is PrimitiveAppliedOptimization.GroupedVisibilityBlock ->
+            "grouped $instructionCount instructions guarded by $visibleExpression"
+        is PrimitiveAppliedOptimization.CachedTextLayout ->
+            "enabled text layout cache for $drawTextInstructionCount text instructions"
+        is PrimitiveAppliedOptimization.PrecomputedHitRegions ->
+            "precomputed $regionCount hit regions"
+        is PrimitiveAppliedOptimization.BakedStaticTexture ->
+            "baked $instructionCount static instructions from $firstPath to $lastPath into $textureId (${width}x$height)"
+        PrimitiveSkippedOptimization.OptimizationDisabled ->
+            "all optimizations disabled"
+        is PrimitiveSkippedOptimization.SkippedByRegion ->
+            "skipped region $path"
+        is PrimitiveSkippedOptimization.PassDisabled ->
+            "pass disabled: $pass"
+        is PrimitiveOptimizationWarning.UnsupportedPass ->
+            "unsupported pass $pass for target $targetId"
+    }
 
 fun PrimitiveScreenProgram.optimizePrimitive(options: PrimitiveOptimizationOptions = PrimitiveOptimizationOptions()): PrimitiveOptimizationResult {
     if (!options.enabled) {
