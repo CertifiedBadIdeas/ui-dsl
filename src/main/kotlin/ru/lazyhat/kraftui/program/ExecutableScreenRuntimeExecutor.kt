@@ -8,16 +8,19 @@ import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
 import ru.lazyhat.kraftui.text.TextLayouter
 
 /**
- * Runtime executor for [OptimizedScreenProgram].
+ * Runtime executor for [ExecutableScreenPlan].
  *
- * The current role of this executor is behavioral parity with
- * [ScreenRuntimeExecutor] while walking optimized render and hit lists. It is
- * the stable target for later cached layers and generated executors.
+ * This executor is the reference target for future generated code. It executes
+ * the same flat steps that code generation will lower, while preserving the
+ * behavior of [ScreenRuntimeExecutor].
  */
-class OptimizedScreenRuntimeExecutor<Action>(
-    private val program: OptimizedScreenProgram<Action>,
+class ExecutableScreenRuntimeExecutor<Action>(
+    private val plan: ExecutableScreenPlan<Action>,
 ) {
-    private val source: ScreenProgram<Action> = program.source
+    private val screenProgram: ScreenProgram<Action> = plan.screenProgram
+    private val staticRenderCache = HashMap<Int, List<CachedRenderCommand>>()
+    private var tickCounter: Int = 0
+    private var activeDragRegion: HitRegion<Action>? = null
 
     var focusedNodeId: String? = null
         private set
@@ -28,16 +31,12 @@ class OptimizedScreenRuntimeExecutor<Action>(
     var activeTooltip: String? = null
         private set
 
-    private var tickCounter: Int = 0
-    private var activeDragRegion: HitRegion<Action>? = null
-    private val staticRenderCache = HashMap<StaticRenderOpKey, List<CachedRenderCommand>>()
-
     val staticRenderCacheSize: Int
         get() = staticRenderCache.size
 
     fun restoreFocus(nodeId: String?) {
         focusedNodeId =
-            if (nodeId != null && source.focusNodes.any { it.nodeId == nodeId }) {
+            if (nodeId != null && screenProgram.focusNodes.any { it.nodeId == nodeId }) {
                 nodeId
             } else {
                 null
@@ -45,7 +44,7 @@ class OptimizedScreenRuntimeExecutor<Action>(
     }
 
     fun firstFocusableNodeId(): String? =
-        source.focusNodes
+        screenProgram.focusNodes
             .filter { it.tabOrder >= 0 }
             .minByOrNull { it.tabOrder }
             ?.nodeId
@@ -54,13 +53,12 @@ class OptimizedScreenRuntimeExecutor<Action>(
         mouseX: Int,
         mouseY: Int,
     ) {
-        for (region in source.hoverRegions) {
-            val frame = source.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) {
+        for (region in screenProgram.hoverRegions) {
+            if (region.frameNotVisible()) {
                 region.state.isHovered = false
                 continue
             }
-            val origin = frame.origin?.value ?: Position.Zero
+            val origin = region.frameOrigin()
             val rx = region.x + origin.x
             val ry = region.y + origin.y
             region.state.isHovered =
@@ -68,10 +66,9 @@ class OptimizedScreenRuntimeExecutor<Action>(
         }
 
         activeTooltip = null
-        for (region in source.tooltipRegions) {
-            val frame = source.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
-            val origin = frame.origin?.value ?: Position.Zero
+        for (region in screenProgram.tooltipRegions) {
+            if (region.frameNotVisible()) continue
+            val origin = region.frameOrigin()
             val rx = region.x + origin.x
             val ry = region.y + origin.y
             if (mouseX >= rx && mouseY >= ry && mouseX < rx + region.width && mouseY < ry + region.height) {
@@ -83,23 +80,19 @@ class OptimizedScreenRuntimeExecutor<Action>(
 
     fun render(backend: RenderBackend) {
         TickContext.current = ++tickCounter
-        for (frame in program.frames) {
-            val sourceFrame = frame.source
-            if (sourceFrame.visible != null && !sourceFrame.visible.value) continue
-            val origin = sourceFrame.origin?.value ?: Position.Zero
+        for (step in plan.renderSteps) {
+            if (step.visible != null && !step.visible.value) continue
+            val origin = step.origin?.value ?: Position.Zero
             val ox = origin.x
             val oy = origin.y
-            for (optimizedOp in frame.renderOps) {
-                if (optimizedOp.canUseStaticRenderCommandCache) {
-                    val key = StaticRenderOpKey(optimizedOp.frameIndex, optimizedOp.opIndex)
-                    val cached =
-                        staticRenderCache.getOrPut(key) {
-                            recordStaticRenderCommands(optimizedOp.source, ox, oy, backend)
-                        }
-                    cached.forEach { it.replay(backend) }
-                } else {
-                    renderOp(optimizedOp.source, ox, oy, backend)
-                }
+            if (step.staticCacheable) {
+                val cached =
+                    staticRenderCache.getOrPut(step.stepIndex) {
+                        recordStaticRenderCommands(step.op, ox, oy, backend)
+                    }
+                cached.forEach { it.replay(backend) }
+            } else {
+                renderOp(step.op, ox, oy, backend)
             }
         }
     }
@@ -191,24 +184,22 @@ class OptimizedScreenRuntimeExecutor<Action>(
         x: Int,
         y: Int,
     ): UiInputResult<Action> {
-        for (optimizedRegion in program.hitRegions) {
-            val region = optimizedRegion.source
-            val frame = source.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
-            val origin = frame.origin?.value ?: Position.Zero
+        for (step in plan.hitSteps) {
+            if (step.visible != null && !step.visible.value) continue
+            val origin = step.origin?.value ?: Position.Zero
+            val region = step.region
             val rx = region.x + origin.x
             val ry = region.y + origin.y
             if (x >= rx && y >= ry && x < rx + region.width && y < ry + region.height) {
-                val clip = region.clip
+                val clip = step.clip
                 if (clip != null) {
-                    val clipFrame = source.frames[clip.frameIndex]
-                    if (clipFrame.visible != null && !clipFrame.visible.value) continue
-                    val clipOrigin = clipFrame.origin?.value ?: Position.Zero
+                    if (step.clipVisible != null && !step.clipVisible.value) continue
+                    val clipOrigin = step.clipOrigin?.value ?: Position.Zero
                     val cx = clip.x + clipOrigin.x
                     val cy = clip.y + clipOrigin.y
                     if (x < cx || y < cy || x >= cx + clip.width || y >= cy + clip.height) continue
                 }
-                source.focusNodes
+                screenProgram.focusNodes
                     .firstOrNull { it.nodeId == region.nodeId }
                     ?.let { focusedNodeId = it.nodeId }
                 region.onClickAt?.invoke(x - rx, y - ry)
@@ -221,8 +212,8 @@ class OptimizedScreenRuntimeExecutor<Action>(
             }
         }
 
-        for (focus in source.focusNodes) {
-            val frame = source.frames[focus.frameIndex]
+        for (focus in screenProgram.focusNodes) {
+            val frame = screenProgram.frames[focus.frameIndex]
             if (frame.visible != null && !frame.visible.value) continue
             val origin = frame.origin?.value ?: Position.Zero
             val fx = focus.x + origin.x
@@ -260,8 +251,8 @@ class OptimizedScreenRuntimeExecutor<Action>(
         y: Int,
         deltaY: Double,
     ): Boolean {
-        for (region in source.scrollRegions) {
-            val frame = source.frames[region.frameIndex]
+        for (region in screenProgram.scrollRegions) {
+            val frame = screenProgram.frames[region.frameIndex]
             if (frame.visible != null && !frame.visible.value) continue
             val origin = frame.origin?.value ?: Position.Zero
             val rx = region.x + origin.x
@@ -295,18 +286,32 @@ class OptimizedScreenRuntimeExecutor<Action>(
         return handler.onCharTyped.invoke(ch)
     }
 
+    private fun HoverRegion.frameNotVisible(): Boolean {
+        val frame = screenProgram.frames[frameIndex]
+        return frame.visible != null && !frame.visible.value
+    }
+
+    private fun HoverRegion.frameOrigin(): Position = screenProgram.frames[frameIndex].origin?.value ?: Position.Zero
+
+    private fun TooltipRegion.frameNotVisible(): Boolean {
+        val frame = screenProgram.frames[frameIndex]
+        return frame.visible != null && !frame.visible.value
+    }
+
+    private fun TooltipRegion.frameOrigin(): Position = screenProgram.frames[frameIndex].origin?.value ?: Position.Zero
+
     private fun focusedHandler(): FocusHandler? {
         val id = focusedNodeId ?: return null
-        return source.focusNodes.firstOrNull { it.nodeId == id }?.handler
+        return screenProgram.focusNodes.firstOrNull { it.nodeId == id }?.handler
     }
 
     private fun cycleFocus(forward: Boolean): Boolean {
         val tabbable =
-            source.focusNodes
+            screenProgram.focusNodes
                 .asSequence()
                 .filter { it.tabOrder >= 0 }
                 .filter {
-                    val frame = source.frames[it.frameIndex]
+                    val frame = screenProgram.frames[it.frameIndex]
                     frame.visible?.value ?: true
                 }.toList()
                 .let { list ->
@@ -358,11 +363,6 @@ class OptimizedScreenRuntimeExecutor<Action>(
 
         override fun measureText(text: String): Int = backend?.measureText(text) ?: 0
     }
-
-    private data class StaticRenderOpKey(
-        val frameIndex: Int,
-        val opIndex: Int,
-    )
 
     private sealed interface CachedRenderCommand {
         fun replay(backend: RenderBackend)
