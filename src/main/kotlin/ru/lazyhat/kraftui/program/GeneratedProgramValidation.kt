@@ -34,6 +34,7 @@ fun ScreenProgram<*>.validateGeneratedProgram(): GeneratedProgramValidationResul
     }
 
     hitRegions.forEach { region ->
+        diagnostics.requireGeneratedValue("hitRegion[${region.nodeId}].visible", region.visible)
         diagnostics.requireGeneratedValue("hitRegion[${region.nodeId}].action", region.action)
         if (region.onClickAt != null) {
             diagnostics +=
@@ -52,10 +53,12 @@ fun ScreenProgram<*>.validateGeneratedProgram(): GeneratedProgramValidationResul
     }
 
     tooltipRegions.forEach { region ->
+        diagnostics.requireGeneratedValue("tooltipRegion[${region.nodeId}].visible", region.visible)
         diagnostics.requireGeneratedValue("tooltipRegion[${region.nodeId}].text", region.text)
     }
 
     scrollRegions.forEach { region ->
+        diagnostics.requireGeneratedValue("scrollRegion[${region.nodeId}].visible", region.visible)
         diagnostics +=
             GeneratedProgramDiagnostic.RuntimeOnlyOperation(
                 path = "scrollRegion[${region.nodeId}].onScroll",
@@ -64,6 +67,7 @@ fun ScreenProgram<*>.validateGeneratedProgram(): GeneratedProgramValidationResul
     }
 
     focusNodes.forEach { node ->
+        diagnostics.requireGeneratedValue("focusNode[${node.nodeId}].visible", node.visible)
         diagnostics +=
             GeneratedProgramDiagnostic.RuntimeOnlyOperation(
                 path = "focusNode[${node.nodeId}].handler",
@@ -94,6 +98,8 @@ private fun MutableList<GeneratedProgramDiagnostic>.validateRenderOp(
             )
         is RenderOp.PushClip -> Unit
         RenderOp.PopClip -> Unit
+        is RenderOp.PushVisibility -> requireGeneratedValue("$path.condition", op.condition)
+        RenderOp.PopVisibility -> Unit
         is RenderOp.DrawCodeEditor -> requireGeneratedValue("$path.viewModel", op.viewModel)
     }
 }

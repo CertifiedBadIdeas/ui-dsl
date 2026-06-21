@@ -29,6 +29,10 @@ sealed interface GeneratedValueExpression {
     data class StateField(
         val fieldName: String,
     ) : GeneratedValueExpression
+
+    data class And(
+        val terms: List<GeneratedValueExpression>,
+    ) : GeneratedValueExpression
 }
 
 interface Value<out T> {
@@ -74,6 +78,29 @@ private class StateValueExpression<State, T>(
         get() = GeneratedValueExpression.StateField(property.name)
 }
 
+private class AndValueExpression(
+    val terms: List<Value<Boolean>>,
+) : Value<Boolean> {
+    override val value: Boolean
+        get() = terms.all { it.value }
+
+    override val isStatic: Boolean
+        get() = terms.all { it.isStatic }
+
+    override val generatedExpression: GeneratedValueExpression?
+        get() {
+            val generatedTerms = terms.map { it.generatedExpression ?: return null }
+            return GeneratedValueExpression.And(
+                generatedTerms.flatMap {
+                    when (it) {
+                        is GeneratedValueExpression.And -> it.terms
+                        else -> listOf(it)
+                    }
+                },
+            )
+        }
+}
+
 fun <T> value(value: T): Value<T> = ValueConstant(value)
 
 fun <T> value(block: () -> T): Value<T> = ValueExpression(block)
@@ -82,6 +109,29 @@ fun <State, T> stateValue(
     property: KProperty1<State, T>,
     state: () -> State,
 ): Value<T> = StateValueExpression(property, state)
+
+internal fun andValues(
+    left: Value<Boolean>?,
+    right: Value<Boolean>?,
+): Value<Boolean>? =
+    when {
+        left == null -> right
+        right == null -> left
+        else ->
+            AndValueExpression(
+                buildList {
+                    fun addTerm(value: Value<Boolean>) {
+                        if (value is AndValueExpression) {
+                            addAll(value.terms)
+                        } else {
+                            add(value)
+                        }
+                    }
+                    addTerm(left)
+                    addTerm(right)
+                },
+            )
+    }
 
 /**
  * A [Value] whose computation receives the current monotonic UI tick. The tick

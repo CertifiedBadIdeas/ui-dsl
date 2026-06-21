@@ -3,6 +3,7 @@ package ru.lazyhat.kraftui.program
 import ru.lazyhat.kraftui.foundation.CanvasScope
 import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.TickContext
+import ru.lazyhat.kraftui.foundation.Value
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
 import ru.lazyhat.kraftui.text.TextLayouter
@@ -54,7 +55,7 @@ class ExecutableScreenRuntimeExecutor<Action>(
         mouseY: Int,
     ) {
         for (region in screenProgram.hoverRegions) {
-            if (region.frameNotVisible()) {
+            if (region.frameNotVisible() || region.visible.notVisible()) {
                 region.state.isHovered = false
                 continue
             }
@@ -67,7 +68,7 @@ class ExecutableScreenRuntimeExecutor<Action>(
 
         activeTooltip = null
         for (region in screenProgram.tooltipRegions) {
-            if (region.frameNotVisible()) continue
+            if (region.frameNotVisible() || region.visible.notVisible()) continue
             val origin = region.frameOrigin()
             val rx = region.x + origin.x
             val ry = region.y + origin.y
@@ -80,8 +81,30 @@ class ExecutableScreenRuntimeExecutor<Action>(
 
     fun render(backend: RenderBackend) {
         TickContext.current = ++tickCounter
+        var currentFrameIndex = -1
+        var currentVisible = true
+        val visibilityStack = ArrayList<Boolean>()
         for (step in plan.renderSteps) {
-            if (step.visible != null && !step.visible.value) continue
+            if (currentFrameIndex != step.frameIndex) {
+                currentFrameIndex = step.frameIndex
+                currentVisible = step.visible?.value ?: true
+                visibilityStack.clear()
+            }
+            when (val op = step.op) {
+                is RenderOp.PushVisibility -> {
+                    visibilityStack += currentVisible
+                    currentVisible = currentVisible && op.condition.value
+                    continue
+                }
+
+                RenderOp.PopVisibility -> {
+                    currentVisible = visibilityStack.removeAt(visibilityStack.lastIndex)
+                    continue
+                }
+
+                else -> Unit
+            }
+            if (!currentVisible) continue
             val origin = step.origin?.value ?: Position.Zero
             val ox = origin.x
             val oy = origin.y
@@ -115,6 +138,10 @@ class ExecutableScreenRuntimeExecutor<Action>(
         backend: RenderBackend,
     ) {
         when (op) {
+            is RenderOp.PushVisibility,
+            RenderOp.PopVisibility,
+            -> Unit
+
             is RenderOp.FillRect -> {
                 backend.fillRect(op.x + ox, op.y + oy, op.width, op.height, op.color.value)
             }
@@ -214,7 +241,7 @@ class ExecutableScreenRuntimeExecutor<Action>(
 
         for (focus in screenProgram.focusNodes) {
             val frame = screenProgram.frames[focus.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
+            if (frame.visible.notVisible() || focus.visible.notVisible()) continue
             val origin = frame.origin?.value ?: Position.Zero
             val fx = focus.x + origin.x
             val fy = focus.y + origin.y
@@ -253,7 +280,7 @@ class ExecutableScreenRuntimeExecutor<Action>(
     ): Boolean {
         for (region in screenProgram.scrollRegions) {
             val frame = screenProgram.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
+            if (frame.visible.notVisible() || region.visible.notVisible()) continue
             val origin = frame.origin?.value ?: Position.Zero
             val rx = region.x + origin.x
             val ry = region.y + origin.y
@@ -288,17 +315,19 @@ class ExecutableScreenRuntimeExecutor<Action>(
 
     private fun HoverRegion.frameNotVisible(): Boolean {
         val frame = screenProgram.frames[frameIndex]
-        return frame.visible != null && !frame.visible.value
+        return frame.visible.notVisible()
     }
 
     private fun HoverRegion.frameOrigin(): Position = screenProgram.frames[frameIndex].origin?.value ?: Position.Zero
 
     private fun TooltipRegion.frameNotVisible(): Boolean {
         val frame = screenProgram.frames[frameIndex]
-        return frame.visible != null && !frame.visible.value
+        return frame.visible.notVisible()
     }
 
     private fun TooltipRegion.frameOrigin(): Position = screenProgram.frames[frameIndex].origin?.value ?: Position.Zero
+
+    private fun Value<Boolean>?.notVisible(): Boolean = this?.value == false
 
     private fun focusedHandler(): FocusHandler? {
         val id = focusedNodeId ?: return null
@@ -312,7 +341,7 @@ class ExecutableScreenRuntimeExecutor<Action>(
                 .filter { it.tabOrder >= 0 }
                 .filter {
                     val frame = screenProgram.frames[it.frameIndex]
-                    frame.visible?.value ?: true
+                    !frame.visible.notVisible() && !it.visible.notVisible()
                 }.toList()
                 .let { list ->
                     val sorted = list.sortedBy { it.tabOrder }

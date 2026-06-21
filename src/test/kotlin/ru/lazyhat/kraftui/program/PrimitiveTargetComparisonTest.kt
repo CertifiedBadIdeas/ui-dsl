@@ -152,6 +152,7 @@ class PrimitiveTargetComparisonTest {
                         "action" -> state().action
                         else -> error("Unexpected field ${expression.fieldName}")
                     }
+                is PrimitiveValueExpression.And -> expression.terms.all { primitiveResolver(state).invoke(it) as Boolean }
             }
         }
 }

@@ -149,6 +149,7 @@ data class ScreenProgramDiagnosticReport(
 data class FocusNode(
     val nodeId: String,
     val frameIndex: Int,
+    val visible: Value<Boolean>? = null,
     val x: Int,
     val y: Int,
     val width: Int,
@@ -252,6 +253,17 @@ sealed interface RenderOp {
     object PopClip : RenderOp
 
     /**
+     * Pushes a nested visibility condition. The condition applies to following
+     * operations in the same frame until the matching [PopVisibility].
+     */
+    data class PushVisibility(
+        val condition: Value<Boolean>,
+    ) : RenderOp
+
+    /** Pops the most recently pushed visibility condition. */
+    object PopVisibility : RenderOp
+
+    /**
      * Draws a complete code editor. The backend reads everything it needs
      * (text, cursor, highlights, diagnostics, scroll) from [viewModel],
      * which is evaluated once per render tick.
@@ -280,6 +292,8 @@ val RenderOp.dependencies: UiDependencies
             is RenderOp.DrawCanvas -> UiDependencies.DynamicValue
             is RenderOp.PushClip -> UiDependencies.Static
             RenderOp.PopClip -> UiDependencies.Static
+            is RenderOp.PushVisibility -> condition.dynamicDependency(UiDependencies.DynamicVisibility)
+            RenderOp.PopVisibility -> UiDependencies.Static
             is RenderOp.DrawCodeEditor -> viewModel.dynamicDependency(UiDependencies.DynamicValue)
         }
 
@@ -295,6 +309,7 @@ val RenderOp.dependencies: UiDependencies
 data class HitRegion<out Action>(
     val nodeId: String,
     val frameIndex: Int,
+    val visible: Value<Boolean>? = null,
     val x: Int,
     val y: Int,
     val width: Int,
@@ -309,7 +324,9 @@ data class HitRegion<out Action>(
 )
 
 val HitRegion<*>.dependencies: UiDependencies
-    get() = action.dynamicDependency(UiDependencies.DynamicInput)
+    get() =
+        action.dynamicDependency(UiDependencies.DynamicInput) +
+            visible.dynamicDependency(UiDependencies.DynamicVisibility)
 
 /**
  * A rectangular bound, expressed in the coordinate space of the frame
@@ -333,6 +350,7 @@ data class HitClip(
 data class HoverRegion(
     val nodeId: String,
     val frameIndex: Int,
+    val visible: Value<Boolean>? = null,
     val x: Int,
     val y: Int,
     val width: Int,
@@ -348,6 +366,7 @@ data class HoverRegion(
 data class TooltipRegion(
     val nodeId: String,
     val frameIndex: Int,
+    val visible: Value<Boolean>? = null,
     val x: Int,
     val y: Int,
     val width: Int,
@@ -356,7 +375,9 @@ data class TooltipRegion(
 )
 
 val TooltipRegion.dependencies: UiDependencies
-    get() = text.dynamicDependency(UiDependencies.DynamicValue)
+    get() =
+        text.dynamicDependency(UiDependencies.DynamicValue) +
+            visible.dynamicDependency(UiDependencies.DynamicVisibility)
 
 private fun Value<*>?.dynamicDependency(kind: UiDependencies): UiDependencies =
     if (this == null || isStatic) UiDependencies.Static else kind
@@ -376,6 +397,7 @@ private fun HitClip?.frameDependency(program: ScreenProgram<*>): UiDependencies 
 data class ScrollRegion(
     val nodeId: String,
     val frameIndex: Int,
+    val visible: Value<Boolean>? = null,
     val x: Int,
     val y: Int,
     val width: Int,

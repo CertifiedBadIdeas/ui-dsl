@@ -3,6 +3,7 @@ package ru.lazyhat.kraftui.program
 import ru.lazyhat.kraftui.foundation.CanvasScope
 import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.TickContext
+import ru.lazyhat.kraftui.foundation.Value
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
 import ru.lazyhat.kraftui.text.TextLayouter
@@ -56,7 +57,7 @@ class OptimizedScreenRuntimeExecutor<Action>(
     ) {
         for (region in source.hoverRegions) {
             val frame = source.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) {
+            if (frame.visible.notVisible() || region.visible.notVisible()) {
                 region.state.isHovered = false
                 continue
             }
@@ -70,7 +71,7 @@ class OptimizedScreenRuntimeExecutor<Action>(
         activeTooltip = null
         for (region in source.tooltipRegions) {
             val frame = source.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
+            if (frame.visible.notVisible() || region.visible.notVisible()) continue
             val origin = frame.origin?.value ?: Position.Zero
             val rx = region.x + origin.x
             val ry = region.y + origin.y
@@ -85,11 +86,28 @@ class OptimizedScreenRuntimeExecutor<Action>(
         TickContext.current = ++tickCounter
         for (frame in program.frames) {
             val sourceFrame = frame.source
-            if (sourceFrame.visible != null && !sourceFrame.visible.value) continue
+            if (sourceFrame.visible.notVisible()) continue
             val origin = sourceFrame.origin?.value ?: Position.Zero
             val ox = origin.x
             val oy = origin.y
+            var currentVisible = true
+            val visibilityStack = ArrayList<Boolean>()
             for (optimizedOp in frame.renderOps) {
+                when (val op = optimizedOp.source) {
+                    is RenderOp.PushVisibility -> {
+                        visibilityStack += currentVisible
+                        currentVisible = currentVisible && op.condition.value
+                        continue
+                    }
+
+                    RenderOp.PopVisibility -> {
+                        currentVisible = visibilityStack.removeAt(visibilityStack.lastIndex)
+                        continue
+                    }
+
+                    else -> Unit
+                }
+                if (!currentVisible) continue
                 if (optimizedOp.canUseStaticRenderCommandCache) {
                     val key = StaticRenderOpKey(optimizedOp.frameIndex, optimizedOp.opIndex)
                     val cached =
@@ -122,6 +140,10 @@ class OptimizedScreenRuntimeExecutor<Action>(
         backend: RenderBackend,
     ) {
         when (op) {
+            is RenderOp.PushVisibility,
+            RenderOp.PopVisibility,
+            -> Unit
+
             is RenderOp.FillRect -> {
                 backend.fillRect(op.x + ox, op.y + oy, op.width, op.height, op.color.value)
             }
@@ -194,7 +216,7 @@ class OptimizedScreenRuntimeExecutor<Action>(
         for (optimizedRegion in program.hitRegions) {
             val region = optimizedRegion.source
             val frame = source.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
+            if (frame.visible.notVisible() || region.visible.notVisible()) continue
             val origin = frame.origin?.value ?: Position.Zero
             val rx = region.x + origin.x
             val ry = region.y + origin.y
@@ -223,7 +245,7 @@ class OptimizedScreenRuntimeExecutor<Action>(
 
         for (focus in source.focusNodes) {
             val frame = source.frames[focus.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
+            if (frame.visible.notVisible() || focus.visible.notVisible()) continue
             val origin = frame.origin?.value ?: Position.Zero
             val fx = focus.x + origin.x
             val fy = focus.y + origin.y
@@ -262,7 +284,7 @@ class OptimizedScreenRuntimeExecutor<Action>(
     ): Boolean {
         for (region in source.scrollRegions) {
             val frame = source.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
+            if (frame.visible.notVisible() || region.visible.notVisible()) continue
             val origin = frame.origin?.value ?: Position.Zero
             val rx = region.x + origin.x
             val ry = region.y + origin.y
@@ -307,7 +329,7 @@ class OptimizedScreenRuntimeExecutor<Action>(
                 .filter { it.tabOrder >= 0 }
                 .filter {
                     val frame = source.frames[it.frameIndex]
-                    frame.visible?.value ?: true
+                    !frame.visible.notVisible() && !it.visible.notVisible()
                 }.toList()
                 .let { list ->
                     val sorted = list.sortedBy { it.tabOrder }
@@ -320,6 +342,8 @@ class OptimizedScreenRuntimeExecutor<Action>(
         focusedNodeId = next.nodeId
         return true
     }
+
+    private fun Value<Boolean>?.notVisible(): Boolean = this?.value == false
 
     private val canvasScope = OffsetCanvasScope()
 

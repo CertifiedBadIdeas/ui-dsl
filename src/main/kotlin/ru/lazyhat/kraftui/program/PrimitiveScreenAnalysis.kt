@@ -256,6 +256,7 @@ private fun MutableList<PrimitiveProgramDiagnostic>.analyzeText(
                 )
             }
         }
+        is PrimitiveValueExpression.And -> Unit
     }
 }
 
@@ -314,6 +315,7 @@ private fun PrimitiveInputInstruction.ClickRegion.staticRect(): PrimitiveRect? {
             null -> Position.Zero
             is PrimitiveValueExpression.Constant -> origin.value as? Position ?: return null
             is PrimitiveValueExpression.StateField -> return null
+            is PrimitiveValueExpression.And -> return null
         }
     return PrimitiveRect(
         path = path,

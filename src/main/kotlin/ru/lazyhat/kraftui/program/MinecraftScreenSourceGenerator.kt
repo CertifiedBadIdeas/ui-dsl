@@ -697,18 +697,21 @@ private fun PrimitiveValueExpression.kotlinExpression(): String =
     when (this) {
         is PrimitiveValueExpression.Constant -> value.kotlinLiteral()
         is PrimitiveValueExpression.StateField -> "state.$fieldName"
+        is PrimitiveValueExpression.And -> terms.joinToString(separator = " && ") { "(${it.kotlinExpression()})" }
     }
 
 private fun PrimitiveValueExpression.componentExpression(component: String): String =
     when (this) {
         is PrimitiveValueExpression.Constant -> "${value.kotlinLiteral()}.$component"
         is PrimitiveValueExpression.StateField -> "state.$fieldName.$component"
+        is PrimitiveValueExpression.And -> error("Boolean expression cannot provide component $component")
     }
 
 private fun PrimitiveValueExpression.minecraftColorExpression(): String =
     when (this) {
         is PrimitiveValueExpression.Constant -> value.minecraftColorLiteral()
         is PrimitiveValueExpression.StateField -> "state.$fieldName"
+        is PrimitiveValueExpression.And -> error("Boolean expression cannot be used as a Minecraft color")
     }
 
 private fun Any?.kotlinLiteral(): String =

@@ -172,4 +172,5 @@ private fun PrimitiveValueExpression.reportExpression(): String =
     when (this) {
         is PrimitiveValueExpression.Constant -> value.toString()
         is PrimitiveValueExpression.StateField -> "state.$fieldName"
+        is PrimitiveValueExpression.And -> terms.joinToString(separator = " && ") { "(${it.reportExpression()})" }
     }

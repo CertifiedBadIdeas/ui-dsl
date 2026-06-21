@@ -12,21 +12,18 @@ fun ScreenProgram<*>.toPrimitiveScreenProgram(): PrimitiveScreenProgram {
     return PrimitiveScreenProgram(
         renderInstructions =
             frames.flatMapIndexed { frameIndex, frame ->
-                frame.ops.mapIndexed { opIndex, op ->
-                    PrimitiveRenderInstruction(
-                        path = "frame[$frameIndex].op[$opIndex]",
-                        visible = frame.visible?.generatedExpression?.toPrimitiveValueExpression(),
-                        origin = frame.origin?.generatedExpression?.toPrimitiveValueExpression(),
-                        op = op.toPrimitiveRenderOp(),
-                    )
-                }
+                frame.toPrimitiveRenderInstructions(frameIndex)
             },
         inputInstructions =
             hitRegions.map { region ->
                 val frame = frames[region.frameIndex]
                 PrimitiveInputInstruction.ClickRegion(
                     path = "hitRegion[${region.nodeId}]",
-                    visible = frame.visible?.generatedExpression?.toPrimitiveValueExpression(),
+                    visible =
+                        combineVisibility(
+                            frame.visible?.generatedExpression?.toPrimitiveValueExpression(),
+                            region.visible?.generatedExpression?.toPrimitiveValueExpression(),
+                        ),
                     origin = frame.origin?.generatedExpression?.toPrimitiveValueExpression(),
                     x = region.x,
                     y = region.y,
@@ -36,6 +33,32 @@ fun ScreenProgram<*>.toPrimitiveScreenProgram(): PrimitiveScreenProgram {
                 )
             },
     )
+}
+
+private fun RenderFrame.toPrimitiveRenderInstructions(frameIndex: Int): List<PrimitiveRenderInstruction> {
+    val frameVisible = visible?.generatedExpression?.toPrimitiveValueExpression()
+    val visibilityStack = ArrayList<PrimitiveValueExpression>()
+    val instructions = ArrayList<PrimitiveRenderInstruction>(ops.size)
+    ops.forEachIndexed { opIndex, op ->
+        when (op) {
+            is RenderOp.PushVisibility -> {
+                visibilityStack += op.condition.generatedExpression.requireGenerated().toPrimitiveValueExpression()
+            }
+            RenderOp.PopVisibility -> {
+                visibilityStack.removeAt(visibilityStack.lastIndex)
+            }
+            else -> {
+                instructions +=
+                    PrimitiveRenderInstruction(
+                        path = "frame[$frameIndex].op[$opIndex]",
+                        visible = combineVisibility(frameVisible, combineVisibility(visibilityStack)),
+                        origin = origin?.generatedExpression?.toPrimitiveValueExpression(),
+                        op = op.toPrimitiveRenderOp(),
+                    )
+            }
+        }
+    }
+    return instructions
 }
 
 private fun RenderOp.toPrimitiveRenderOp(): PrimitiveRenderOp =
@@ -71,6 +94,8 @@ private fun RenderOp.toPrimitiveRenderOp(): PrimitiveRenderOp =
         is RenderOp.DrawCanvas -> error("DrawCanvas should have been rejected by validateGeneratedProgram")
         is RenderOp.PushClip -> PrimitiveRenderOp.PushClip(x, y, width, height)
         RenderOp.PopClip -> PrimitiveRenderOp.PopClip
+        is RenderOp.PushVisibility -> error("PushVisibility should have been consumed by primitive lowering")
+        RenderOp.PopVisibility -> error("PopVisibility should have been consumed by primitive lowering")
         is RenderOp.DrawCodeEditor ->
             PrimitiveRenderOp.DrawCodeEditor(
                 x = x,
@@ -90,6 +115,26 @@ private fun GeneratedValueExpression.toPrimitiveValueExpression(): PrimitiveValu
     when (this) {
         is GeneratedValueExpression.Constant -> PrimitiveValueExpression.Constant(value)
         is GeneratedValueExpression.StateField -> PrimitiveValueExpression.StateField(fieldName)
+        is GeneratedValueExpression.And -> PrimitiveValueExpression.And(terms.map { it.toPrimitiveValueExpression() })
+    }
+
+private fun combineVisibility(expressions: List<PrimitiveValueExpression>): PrimitiveValueExpression? =
+    when (expressions.size) {
+        0 -> null
+        1 -> expressions.single()
+        else -> PrimitiveValueExpression.And(expressions)
+    }
+
+private fun combineVisibility(
+    first: PrimitiveValueExpression?,
+    second: PrimitiveValueExpression?,
+): PrimitiveValueExpression? =
+    combineVisibility(listOfNotNull(first, second).flatMap { it.flattenAndTerms() })
+
+private fun PrimitiveValueExpression.flattenAndTerms(): List<PrimitiveValueExpression> =
+    when (this) {
+        is PrimitiveValueExpression.And -> terms.flatMap { it.flattenAndTerms() }
+        else -> listOf(this)
     }
 
 internal fun GeneratedProgramDiagnostic.asText(): String =

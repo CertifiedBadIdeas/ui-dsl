@@ -3,6 +3,7 @@ package ru.lazyhat.kraftui.program
 import ru.lazyhat.kraftui.foundation.CanvasScope
 import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.TickContext
+import ru.lazyhat.kraftui.foundation.Value
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
 import ru.lazyhat.kraftui.text.TextLayouter
@@ -128,7 +129,7 @@ class ScreenRuntimeExecutor<Action>(
     ) {
         for (region in program.hoverRegions) {
             val frame = program.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) {
+            if (frame.notVisible() || region.visible.notVisible()) {
                 region.state.isHovered = false
                 continue
             }
@@ -142,7 +143,7 @@ class ScreenRuntimeExecutor<Action>(
         activeTooltip = null
         for (region in program.tooltipRegions) {
             val frame = program.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
+            if (frame.notVisible() || region.visible.notVisible()) continue
             val origin = frame.origin?.value ?: Position.Zero
             val rx = region.x + origin.x
             val ry = region.y + origin.y
@@ -156,17 +157,30 @@ class ScreenRuntimeExecutor<Action>(
     fun render(backend: RenderBackend) {
         TickContext.current = ++tickCounter
         for (frame in program.frames) {
-            if (frame.visible != null && !frame.visible.value) continue
+            if (frame.notVisible()) continue
             val origin = frame.origin?.value ?: Position.Zero
             val ox = origin.x
             val oy = origin.y
+            var currentVisible = true
+            val visibilityStack = ArrayList<Boolean>()
             for (op in frame.ops) {
                 when (op) {
+                    is RenderOp.PushVisibility -> {
+                        visibilityStack += currentVisible
+                        currentVisible = currentVisible && op.condition.value
+                    }
+
+                    RenderOp.PopVisibility -> {
+                        currentVisible = visibilityStack.removeAt(visibilityStack.lastIndex)
+                    }
+
                     is RenderOp.FillRect -> {
+                        if (!currentVisible) continue
                         backend.fillRect(op.x + ox, op.y + oy, op.width, op.height, op.color.value)
                     }
 
                     is RenderOp.DrawText -> {
+                        if (!currentVisible) continue
                         val text = op.value.value
                         val visibleLineCount = (op.height / op.flow.lineHeight).coerceAtLeast(0)
                         val effectiveMaxLines =
@@ -198,23 +212,28 @@ class ScreenRuntimeExecutor<Action>(
                     }
 
                     is RenderOp.DrawTerminalSurface -> {
+                        if (!currentVisible) continue
                         backend.drawTerminalSurface(op.x + ox, op.y + oy, op.snapshot.value)
                     }
 
                     is RenderOp.DrawCanvas -> {
+                        if (!currentVisible) continue
                         canvasScope.bind(backend, op.x + ox, op.y + oy, op.width, op.height)
                         op.onDraw.invoke(canvasScope)
                     }
 
                     is RenderOp.PushClip -> {
+                        if (!currentVisible) continue
                         backend.pushClip(op.x + ox, op.y + oy, op.width, op.height)
                     }
 
                     RenderOp.PopClip -> {
+                        if (!currentVisible) continue
                         backend.popClip()
                     }
 
                     is RenderOp.DrawCodeEditor -> {
+                        if (!currentVisible) continue
                         backend.drawCodeEditor(
                             op.x + ox,
                             op.y + oy,
@@ -274,7 +293,7 @@ class ScreenRuntimeExecutor<Action>(
     ): UiInputResult<Action> {
         for (region in program.hitRegions) {
             val frame = program.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
+            if (frame.notVisible() || region.visible.notVisible()) continue
             val origin = frame.origin?.value ?: Position.Zero
             val rx = region.x + origin.x
             val ry = region.y + origin.y
@@ -314,7 +333,7 @@ class ScreenRuntimeExecutor<Action>(
 
         for (focus in program.focusNodes) {
             val frame = program.frames[focus.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
+            if (frame.notVisible() || focus.visible.notVisible()) continue
             val origin = frame.origin?.value ?: Position.Zero
             val fx = focus.x + origin.x
             val fy = focus.y + origin.y
@@ -353,7 +372,7 @@ class ScreenRuntimeExecutor<Action>(
     ): Boolean {
         for (region in program.scrollRegions) {
             val frame = program.frames[region.frameIndex]
-            if (frame.visible != null && !frame.visible.value) continue
+            if (frame.notVisible() || region.visible.notVisible()) continue
             val origin = frame.origin?.value ?: Position.Zero
             val rx = region.x + origin.x
             val ry = region.y + origin.y
@@ -363,6 +382,10 @@ class ScreenRuntimeExecutor<Action>(
         }
         return false
     }
+
+    private fun RenderFrame.notVisible(): Boolean = visible?.value == false
+
+    private fun Value<Boolean>?.notVisible(): Boolean = this?.value == false
 
     private fun focusedHandler(): FocusHandler? {
         val id = focusedNodeId ?: return null

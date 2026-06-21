@@ -51,6 +51,9 @@ fun ExecutableScreenPlan<*>.generateRenderExecutorSource(
             appendLine("    private val canvasScope = OffsetCanvasScope()")
             appendLine()
             appendLine("    fun render(backend: RenderBackend) {")
+            appendLine("        var currentFrameIndex = -1")
+            appendLine("        var currentVisible = true")
+            appendLine("        val visibilityStack = ArrayList<Boolean>()")
             renderSteps.forEachIndexed { index, step ->
                 appendRenderStep(index, step)
             }
@@ -72,12 +75,26 @@ private fun StringBuilder.appendRenderStep(
     step: ExecutableRenderStep,
 ) {
     appendLine("        val step$index = plan.renderSteps[$index]")
-    if (step.visible != null) {
-        appendLine("        if (step$index.visible?.value != false) {")
-        appendRenderStepBody(index, step, indent = "            ")
-        appendLine("        }")
-    } else {
-        appendRenderStepBody(index, step, indent = "        ")
+    appendLine("        if (currentFrameIndex != step$index.frameIndex) {")
+    appendLine("            currentFrameIndex = step$index.frameIndex")
+    appendLine("            currentVisible = step$index.visible?.value != false")
+    appendLine("            visibilityStack.clear()")
+    appendLine("        }")
+    when (step.op) {
+        is RenderOp.PushVisibility -> {
+            appendLine("        visibilityStack += currentVisible")
+            appendLine("        currentVisible = currentVisible && (step$index.op as RenderOp.PushVisibility).condition.value")
+            return
+        }
+        RenderOp.PopVisibility -> {
+            appendLine("        currentVisible = visibilityStack.removeAt(visibilityStack.lastIndex)")
+            return
+        }
+        else -> {
+            appendLine("        if (currentVisible) {")
+            appendRenderStepBody(index, step, indent = "            ")
+            appendLine("        }")
+        }
     }
 }
 
@@ -93,6 +110,9 @@ private fun StringBuilder.appendRenderStepBody(
     }
 
     when (val op = step.op) {
+        is RenderOp.PushVisibility,
+        RenderOp.PopVisibility,
+        -> Unit
         is RenderOp.FillRect -> appendFillRect(index, step, op, indent)
         is RenderOp.DrawText -> appendDrawText(index, step, indent)
         is RenderOp.DrawTerminalSurface -> appendDrawTerminalSurface(index, step, indent)

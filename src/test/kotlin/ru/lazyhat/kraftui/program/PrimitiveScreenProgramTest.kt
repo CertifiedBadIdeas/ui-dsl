@@ -18,6 +18,8 @@ class PrimitiveScreenProgramTest {
         val title: String,
         val action: TestAction?,
         val origin: Position = Position.Zero,
+        val selected: Boolean = false,
+        val enabled: Boolean = false,
     )
 
     private sealed interface TestAction {
@@ -166,6 +168,7 @@ class PrimitiveScreenProgramTest {
                                     "origin" -> state.origin
                                     else -> error("Unexpected field ${expression.fieldName}")
                                 }
+                            is PrimitiveValueExpression.And -> expression.terms.all { it.resolveTestValue(state) as Boolean }
                         }
                     },
                 )
@@ -188,10 +191,89 @@ class PrimitiveScreenProgramTest {
                                     "origin" -> state.origin
                                     else -> error("Unexpected field ${expression.fieldName}")
                                 }
+                            is PrimitiveValueExpression.And -> expression.terms.all { it.resolveTestValue(state) as Boolean }
                         }
                     },
                 )
             },
+        )
+    }
+
+    @Test
+    fun conditionalRenderOpsKeepTreeOrder() {
+        val state = ScreenState("Zone 0", TestAction.Open, selected = true)
+        val screenProgram =
+            ScreenProgramCompiler().compile(
+                uiActions<TestAction>(Modifier.size(80, 30)) {
+                    box(Modifier.size(50, 20).background(Color.Red))
+                    If(stateValue(ScreenState::selected) { state }) {
+                        box(Modifier.size(50, 20).background(Color.Blue))
+                    }
+                    text(
+                        modifier = Modifier.size(50, 20),
+                        color = Color.White,
+                        text = "Label",
+                    )
+                },
+            )
+
+        val primitive = screenProgram.toPrimitiveScreenProgram()
+
+        assertEquals(
+            listOf(
+                PrimitiveRenderOp.FillRect(
+                    x = 0,
+                    y = 0,
+                    width = 50,
+                    height = 20,
+                    color = PrimitiveValueExpression.Constant(Color.Red),
+                ),
+                PrimitiveRenderOp.FillRect(
+                    x = 0,
+                    y = 0,
+                    width = 50,
+                    height = 20,
+                    color = PrimitiveValueExpression.Constant(Color.Blue),
+                ),
+                PrimitiveRenderOp.DrawText(
+                    x = 0,
+                    y = 0,
+                    width = 50,
+                    height = 20,
+                    text = PrimitiveValueExpression.Constant("Label"),
+                    color = PrimitiveValueExpression.Constant(Color.White),
+                ),
+            ),
+            primitive.renderInstructions.map { it.op },
+        )
+        assertEquals(PrimitiveValueExpression.StateField("selected"), primitive.renderInstructions[1].visible)
+        assertEquals(null, primitive.renderInstructions[2].visible)
+    }
+
+    @Test
+    fun nestedConditionalRenderOpsKeepBothVisibilityGuards() {
+        val state = ScreenState("Zone 0", TestAction.Open, selected = true, enabled = true)
+        val screenProgram =
+            ScreenProgramCompiler().compile(
+                uiActions<TestAction>(Modifier.size(80, 30)) {
+                    If(stateValue(ScreenState::selected) { state }) {
+                        If(stateValue(ScreenState::enabled) { state }) {
+                            box(Modifier.size(50, 20).background(Color.Blue))
+                        }
+                    }
+                },
+            )
+
+        val primitive = screenProgram.toPrimitiveScreenProgram()
+
+        assertEquals(
+            PrimitiveValueExpression.And(
+                listOf(
+                    PrimitiveValueExpression.StateField("selected"),
+                    PrimitiveValueExpression.StateField("enabled"),
+                ),
+            ),
+            primitive.renderInstructions.single().visible,
         )
     }
 
@@ -200,4 +282,18 @@ class PrimitiveScreenProgramTest {
         render(backend)
         return backend.calls
     }
+
+    private fun PrimitiveValueExpression.resolveTestValue(state: ScreenState): Any? =
+        when (this) {
+            is PrimitiveValueExpression.Constant -> value
+            is PrimitiveValueExpression.StateField ->
+                when (fieldName) {
+                    "title" -> state.title
+                    "origin" -> state.origin
+                    "selected" -> state.selected
+                    "enabled" -> state.enabled
+                    else -> error("Unexpected field $fieldName")
+                }
+            is PrimitiveValueExpression.And -> terms.all { it.resolveTestValue(state) as Boolean }
+        }
 }

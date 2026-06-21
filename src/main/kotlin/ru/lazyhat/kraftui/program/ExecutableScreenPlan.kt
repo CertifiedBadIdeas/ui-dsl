@@ -1,6 +1,7 @@
 package ru.lazyhat.kraftui.program
 
 import ru.lazyhat.kraftui.foundation.Value
+import ru.lazyhat.kraftui.foundation.andValues
 import ru.lazyhat.kraftui.foundation.modifier.Position
 
 /**
@@ -77,7 +78,7 @@ fun <Action> OptimizedScreenProgram<Action>.toExecutablePlan(): ExecutableScreen
                 regionIndex = optimizedHit.sourceIndex,
                 region = region,
                 frame = frame,
-                visible = frame.visible,
+                visible = andValues(frame.visible, region.visible),
                 origin = frame.origin,
                 clip = clip,
                 clipFrame = clipFrame,
@@ -106,6 +107,9 @@ val OptimizedRenderOp.canUseStaticRenderCommandCache: Boolean
                 is RenderOp.PushClip,
                 RenderOp.PopClip,
                 -> true
+                is RenderOp.PushVisibility,
+                RenderOp.PopVisibility,
+                -> false
                 is RenderOp.DrawText,
                 is RenderOp.DrawCanvas,
                 is RenderOp.DrawCodeEditor,

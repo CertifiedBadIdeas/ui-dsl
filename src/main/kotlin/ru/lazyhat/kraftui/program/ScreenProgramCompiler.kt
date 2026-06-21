@@ -2,6 +2,7 @@ package ru.lazyhat.kraftui.program
 
 import ru.lazyhat.kraftui.foundation.UiElement
 import ru.lazyhat.kraftui.foundation.Value
+import ru.lazyhat.kraftui.foundation.andValues
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.findBackground
@@ -110,6 +111,7 @@ class ScreenProgramCompiler(
         scrollRegions: MutableList<ScrollRegion>,
         diagnostics: MutableList<ScreenProgramDiagnostic>,
         frameIndex: Int,
+        visible: Value<Boolean>? = null,
     ) {
         if (element is UiElement.Overlay) {
             lowerOverlay(
@@ -124,6 +126,7 @@ class ScreenProgramCompiler(
                 focusNodes,
                 scrollRegions,
                 diagnostics,
+                visible,
             )
             return
         }
@@ -136,6 +139,7 @@ class ScreenProgramCompiler(
                 FocusNode(
                     nodeId = f.id,
                     frameIndex = frameIndex,
+                    visible = visible,
                     x = node.x,
                     y = node.y,
                     width = node.width,
@@ -154,6 +158,7 @@ class ScreenProgramCompiler(
                 HoverRegion(
                     nodeId = nodeId,
                     frameIndex = frameIndex,
+                    visible = visible,
                     x = node.x,
                     y = node.y,
                     width = node.width,
@@ -166,6 +171,7 @@ class ScreenProgramCompiler(
                 TooltipRegion(
                     nodeId = nodeId,
                     frameIndex = frameIndex,
+                    visible = visible,
                     x = node.x,
                     y = node.y,
                     width = node.width,
@@ -184,6 +190,7 @@ class ScreenProgramCompiler(
                         HitRegion(
                             nodeId = nodeId,
                             frameIndex = frameIndex,
+                            visible = visible,
                             x = node.x,
                             y = node.y,
                             width = node.width,
@@ -210,6 +217,7 @@ class ScreenProgramCompiler(
                         scrollRegions,
                         diagnostics,
                         frameIndex,
+                        visible,
                     )
                 }
             }
@@ -230,6 +238,7 @@ class ScreenProgramCompiler(
                         scrollRegions,
                         diagnostics,
                         frameIndex,
+                        visible,
                     )
                 }
             }
@@ -250,6 +259,7 @@ class ScreenProgramCompiler(
                         scrollRegions,
                         diagnostics,
                         frameIndex,
+                        visible,
                     )
                 }
             }
@@ -271,6 +281,7 @@ class ScreenProgramCompiler(
                             scrollRegions,
                             diagnostics,
                             frameIndex,
+                            visible,
                         )
                     }
                 }
@@ -344,6 +355,7 @@ class ScreenProgramCompiler(
                         FocusNode(
                             nodeId = nodeId,
                             frameIndex = frameIndex,
+                            visible = visible,
                             x = node.x,
                             y = node.y,
                             width = node.width,
@@ -369,20 +381,19 @@ class ScreenProgramCompiler(
                     hitRegions,
                     focusNodes,
                     scrollRegions,
+                    visible,
                 )
             }
 
             is UiElement.IfNode -> {
-                val subOps = mutableListOf<RenderOp>()
-                val subFrameIndex = frames.size
-                frames += subOps
-                descriptors += FrameDescriptor(origin = null, visible = element.condition)
+                val nestedVisible = andValues(visible, element.condition)
+                ops += RenderOp.PushVisibility(element.condition)
                 element.children.forEachIndexed { index, child ->
                     lower(
                         child,
                         "$nodeId-$index",
                         layout,
-                        subOps,
+                        ops,
                         hitRegions,
                         hoverRegions,
                         tooltipRegions,
@@ -391,9 +402,11 @@ class ScreenProgramCompiler(
                         focusNodes,
                         scrollRegions,
                         diagnostics,
-                        subFrameIndex,
+                        frameIndex,
+                        nestedVisible,
                     )
                 }
+                ops += RenderOp.PopVisibility
             }
 
             is UiElement.Overlay -> {
@@ -415,6 +428,7 @@ class ScreenProgramCompiler(
                     scrollRegions,
                     diagnostics,
                     parentFrameIndex = frameIndex,
+                    visible = visible,
                 )
             }
         }
@@ -432,6 +446,7 @@ class ScreenProgramCompiler(
         focusNodes: MutableList<FocusNode>,
         scrollRegions: MutableList<ScrollRegion>,
         diagnostics: MutableList<ScreenProgramDiagnostic>,
+        visible: Value<Boolean>?,
     ) {
         val size = element.modifier.findSize()?.size
         val overlayWidth = size?.width ?: parentLayout["root"]?.width ?: 0
@@ -446,7 +461,7 @@ class ScreenProgramCompiler(
         val subOps = mutableListOf<RenderOp>()
         val subFrameIndex = frames.size
         frames += subOps
-        descriptors += FrameDescriptor(origin = element.anchor, visible = element.visible)
+        descriptors += FrameDescriptor(origin = element.anchor, visible = andValues(visible, element.visible))
         element.children.forEachIndexed { index, child ->
             lower(
                 child,
@@ -462,6 +477,7 @@ class ScreenProgramCompiler(
                 scrollRegions,
                 diagnostics,
                 subFrameIndex,
+                visible = null,
             )
         }
     }
@@ -485,6 +501,7 @@ class ScreenProgramCompiler(
         scrollRegions: MutableList<ScrollRegion>,
         diagnostics: MutableList<ScreenProgramDiagnostic>,
         parentFrameIndex: Int,
+        visible: Value<Boolean>?,
     ) {
         // Optional background fill on the viewport itself.
         element.modifier.findBackground()?.let { bg ->
@@ -514,7 +531,7 @@ class ScreenProgramCompiler(
             ru.lazyhat.kraftui.foundation.value {
                 Position(originX - scrollX.value, originY - scrollY.value)
             }
-        descriptors += FrameDescriptor(origin = origin, visible = null)
+        descriptors += FrameDescriptor(origin = origin, visible = visible)
 
         // Hit-region clip stamped onto every region collected inside the sub-tree.
         val hitClip =
@@ -542,6 +559,7 @@ class ScreenProgramCompiler(
                 scrollRegions,
                 diagnostics,
                 subFrameIndex,
+                visible = null,
             )
         }
         for (i in hitRegionsBefore until hitRegions.size) {
@@ -553,6 +571,7 @@ class ScreenProgramCompiler(
             ScrollRegion(
                 nodeId = nodeId,
                 frameIndex = parentFrameIndex,
+                visible = visible,
                 x = outer.x,
                 y = outer.y,
                 width = outer.width,
@@ -572,6 +591,7 @@ class ScreenProgramCompiler(
         hitRegions: MutableList<HitRegion<Action>>,
         focusNodes: MutableList<FocusNode>,
         scrollRegions: MutableList<ScrollRegion>,
+        visible: Value<Boolean>?,
     ) {
         ops +=
             RenderOp.DrawCodeEditor(
@@ -594,6 +614,7 @@ class ScreenProgramCompiler(
             FocusNode(
                 nodeId = nodeId,
                 frameIndex = frameIndex,
+                visible = visible,
                 x = node.x,
                 y = node.y,
                 width = width,
@@ -616,6 +637,7 @@ class ScreenProgramCompiler(
             HitRegion(
                 nodeId = nodeId,
                 frameIndex = frameIndex,
+                visible = visible,
                 x = node.x,
                 y = node.y,
                 width = width,
@@ -640,6 +662,7 @@ class ScreenProgramCompiler(
             ScrollRegion(
                 nodeId = nodeId,
                 frameIndex = frameIndex,
+                visible = visible,
                 x = node.x,
                 y = node.y,
                 width = width,

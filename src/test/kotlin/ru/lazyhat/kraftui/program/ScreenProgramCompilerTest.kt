@@ -400,7 +400,7 @@ class ScreenProgramCompilerTest {
     }
 
     @Test
-    fun ifNodeProducesSeparateFrameGuardedByVisibilityExpression() {
+    fun ifNodeKeepsRenderOrderWithInlineVisibilityGuard() {
         var visible = false
         val program =
             ScreenProgramCompiler().compile(
@@ -411,15 +411,15 @@ class ScreenProgramCompilerTest {
                 },
             )
 
-        // Two frames: root + If frame.
-        assertEquals(2, program.frames.size)
-        val ifFrame = program.frames[1]
-        assertNotNull(ifFrame.visible)
-        assertEquals(false, ifFrame.visible.value)
+        assertEquals(1, program.frames.size)
+        val ops = program.frames.single().ops
+        assertEquals(3, ops.size)
+        val pushVisibility = ops[0] as RenderOp.PushVisibility
+        assertEquals(false, pushVisibility.condition.value)
+        assertTrue(ops[1] is RenderOp.FillRect)
+        assertEquals(RenderOp.PopVisibility, ops[2])
         visible = true
-        assertEquals(true, ifFrame.visible.value)
-        // Frame carries the FillRect op for the inner box.
-        assertTrue(ifFrame.ops.any { it is RenderOp.FillRect })
+        assertEquals(true, pushVisibility.condition.value)
     }
 
     @Test

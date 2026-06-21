@@ -129,7 +129,11 @@ private fun PrimitiveRenderOp.render(
 }
 
 private fun PrimitiveValueExpression.resolve(resolve: (PrimitiveValueExpression) -> Any?): Any? =
-    resolve(this)
+    when (this) {
+        is PrimitiveValueExpression.Constant -> value
+        is PrimitiveValueExpression.StateField -> resolve(this)
+        is PrimitiveValueExpression.And -> terms.all { it.resolveAs<Boolean>(resolve) }
+    }
 
 private inline fun <reified T> PrimitiveValueExpression.resolveAs(resolve: (PrimitiveValueExpression) -> Any?): T =
     requireNotNull(resolve(this) as? T) {

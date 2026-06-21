@@ -231,6 +231,7 @@ private fun PrimitiveValueExpression.kotlinExpression(): String =
     when (this) {
         is PrimitiveValueExpression.Constant -> value.kotlinLiteral()
         is PrimitiveValueExpression.StateField -> "state.$fieldName"
+        is PrimitiveValueExpression.And -> terms.joinToString(separator = " && ") { "(${it.kotlinExpression()})" }
     }
 
 private fun Any?.kotlinLiteral(): String =

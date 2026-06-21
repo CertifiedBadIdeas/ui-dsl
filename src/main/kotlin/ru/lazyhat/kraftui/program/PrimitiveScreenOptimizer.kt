@@ -317,6 +317,7 @@ private fun PrimitiveRenderInstruction.optimize(
         }
         null,
         is PrimitiveValueExpression.StateField,
+        is PrimitiveValueExpression.And,
         -> Unit
         is PrimitiveValueExpression.Constant -> Unit
     }
@@ -374,6 +375,7 @@ private fun PrimitiveInputInstruction.ClickRegion.optimize(
         }
         null,
         is PrimitiveValueExpression.StateField,
+        is PrimitiveValueExpression.And,
         -> Unit
         is PrimitiveValueExpression.Constant -> Unit
     }

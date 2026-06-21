@@ -85,6 +85,10 @@ sealed interface PrimitiveValueExpression {
     data class StateField(
         val fieldName: String,
     ) : PrimitiveValueExpression
+
+    data class And(
+        val terms: List<PrimitiveValueExpression>,
+    ) : PrimitiveValueExpression
 }
 
 data class PrimitiveRenderInstruction(
@@ -199,4 +203,10 @@ private fun PrimitiveValueExpression?.primitiveDependency(kind: PrimitiveProgram
         is PrimitiveValueExpression.Constant,
         -> PrimitiveProgramDependencies.Static
         is PrimitiveValueExpression.StateField -> kind
+        is PrimitiveValueExpression.And ->
+            if (terms.all { it is PrimitiveValueExpression.Constant }) {
+                PrimitiveProgramDependencies.Static
+            } else {
+                kind
+            }
     }
