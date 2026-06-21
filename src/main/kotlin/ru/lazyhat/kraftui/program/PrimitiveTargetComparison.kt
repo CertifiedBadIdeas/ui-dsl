@@ -34,14 +34,6 @@ data class PrimitiveTargetSnapshot(
     val analysisReport: PrimitiveProgramAnalysisReport,
 )
 
-sealed interface PrimitiveClickResult {
-    data object Ignored : PrimitiveClickResult
-
-    data class Action(
-        val value: Any?,
-    ) : PrimitiveClickResult
-}
-
 data class PrimitiveTargetComparisonReport(
     val snapshots: List<PrimitiveTargetSnapshot>,
     val differences: List<PrimitiveTargetDifference>,
@@ -151,7 +143,7 @@ private fun primitiveSnapshot(
         renderTrace = backend.calls,
         clickResults =
             clicks.map { click ->
-                program.mouseClicked(resolve, click.x, click.y).toPrimitiveClickResult()
+                program.mouseClicked(resolve, click.x, click.y)
             },
         analysisReport =
             program.analyze(
@@ -166,16 +158,8 @@ private fun primitiveSnapshot(
 private fun UiInputResult<*>.toPrimitiveClickResult(): PrimitiveClickResult =
     when (this) {
         is UiInputResult.Action -> PrimitiveClickResult.Action(action)
-        UiInputResult.Consumed,
-        UiInputResult.Ignored,
-        -> PrimitiveClickResult.Ignored
-    }
-
-private fun Any?.toPrimitiveClickResult(): PrimitiveClickResult =
-    if (this == null) {
-        PrimitiveClickResult.Ignored
-    } else {
-        PrimitiveClickResult.Action(this)
+        UiInputResult.Consumed -> PrimitiveClickResult.Consumed
+        UiInputResult.Ignored -> PrimitiveClickResult.Ignored
     }
 
 private fun List<PrimitiveTargetSnapshot>.compareAgainstReference(clicks: List<PrimitiveClickProbe>): List<PrimitiveTargetDifference> {

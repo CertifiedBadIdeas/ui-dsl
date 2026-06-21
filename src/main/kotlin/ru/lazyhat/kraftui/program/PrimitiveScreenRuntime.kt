@@ -5,6 +5,16 @@ import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
 import ru.lazyhat.kraftui.text.TextLayouter
 
+sealed interface PrimitiveClickResult {
+    data object Ignored : PrimitiveClickResult
+
+    data object Consumed : PrimitiveClickResult
+
+    data class Action(
+        val value: Any?,
+    ) : PrimitiveClickResult
+}
+
 fun PrimitiveScreenProgram.render(
     backend: RenderBackend,
     resolve: (PrimitiveValueExpression) -> Any?,
@@ -21,7 +31,7 @@ fun PrimitiveScreenProgram.mouseClicked(
     resolve: (PrimitiveValueExpression) -> Any?,
     x: Int,
     y: Int,
-): Any? {
+): PrimitiveClickResult {
     inputInstructions.forEach { instruction ->
         when (instruction) {
             is PrimitiveInputInstruction.ClickRegion -> {
@@ -31,12 +41,13 @@ fun PrimitiveScreenProgram.mouseClicked(
                 val left = instruction.x + origin.x
                 val top = instruction.y + origin.y
                 if (x >= left && y >= top && x < left + instruction.width && y < top + instruction.height) {
-                    return instruction.action?.resolve(resolve)
+                    return instruction.action?.resolve(resolve)?.let(PrimitiveClickResult::Action)
+                        ?: PrimitiveClickResult.Consumed
                 }
             }
         }
     }
-    return null
+    return PrimitiveClickResult.Ignored
 }
 
 private fun PrimitiveRenderOp.render(
