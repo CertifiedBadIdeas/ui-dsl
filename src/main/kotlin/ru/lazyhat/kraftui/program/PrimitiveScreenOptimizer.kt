@@ -4,9 +4,41 @@ import ru.lazyhat.kraftui.foundation.modifier.Position
 
 data class PrimitiveOptimizationOptions(
     val enabled: Boolean = true,
-    val excludedPaths: Set<String> = emptySet(),
-    val mergeAdjacentFills: Boolean = true,
-)
+    val passes: Set<PrimitiveOptimizationPass> = PrimitiveOptimizationPass.default,
+    val disabledRegions: Set<String> = emptySet(),
+) {
+    fun enables(pass: PrimitiveOptimizationPass): Boolean = enabled && pass in passes
+}
+
+enum class PrimitiveOptimizationPass {
+    DeadBranchElimination,
+    ConstantFolding,
+    AdjacentFillMerging,
+    VisibilityBlockGrouping,
+    HitRegionPrecompute,
+    TextLayoutCaching,
+    StaticTextureBaking,
+    ;
+
+    companion object {
+        val primitiveProgramPasses: Set<PrimitiveOptimizationPass> =
+            setOf(
+                DeadBranchElimination,
+                ConstantFolding,
+                AdjacentFillMerging,
+            )
+
+        val default: Set<PrimitiveOptimizationPass> =
+            setOf(
+                DeadBranchElimination,
+                ConstantFolding,
+                AdjacentFillMerging,
+                VisibilityBlockGrouping,
+                HitRegionPrecompute,
+                TextLayoutCaching,
+            )
+    }
+}
 
 data class PrimitiveOptimizationResult(
     val program: PrimitiveScreenProgram,
@@ -23,63 +55,106 @@ data class PrimitiveOptimizationResult(
 }
 
 data class PrimitiveOptimizationReport(
-    val entries: List<PrimitiveOptimizationEntry>,
+    val applied: List<PrimitiveAppliedOptimization> = emptyList(),
+    val skipped: List<PrimitiveSkippedOptimization> = emptyList(),
+    val warnings: List<PrimitiveOptimizationWarning> = emptyList(),
 ) {
+    val entries: List<PrimitiveOptimizationEntry>
+        get() = applied + skipped + warnings
+
     val changed: Boolean
-        get() = entries.any { it != PrimitiveOptimizationEntry.OptimizationDisabled }
+        get() = applied.isNotEmpty()
+
+    operator fun plus(other: PrimitiveOptimizationReport): PrimitiveOptimizationReport =
+        PrimitiveOptimizationReport(
+            applied = applied + other.applied,
+            skipped = skipped + other.skipped,
+            warnings = warnings + other.warnings,
+        )
 }
 
-sealed interface PrimitiveOptimizationEntry {
-    data object OptimizationDisabled : PrimitiveOptimizationEntry
+sealed interface PrimitiveOptimizationEntry
 
-    data class SkippedByPath(
-        val path: String,
-    ) : PrimitiveOptimizationEntry
-
+sealed interface PrimitiveAppliedOptimization : PrimitiveOptimizationEntry {
     data class RemovedAlwaysInvisibleInstruction(
         val path: String,
-    ) : PrimitiveOptimizationEntry
+    ) : PrimitiveAppliedOptimization
 
     data class FoldedConstantVisibility(
         val path: String,
         val visible: Boolean,
-    ) : PrimitiveOptimizationEntry
+    ) : PrimitiveAppliedOptimization
 
     data class FoldedConstantOrigin(
         val path: String,
         val x: Int,
         val y: Int,
-    ) : PrimitiveOptimizationEntry
+    ) : PrimitiveAppliedOptimization
 
     data class MergedAdjacentFills(
         val firstPath: String,
         val secondPath: String,
         val mergedPath: String,
-    ) : PrimitiveOptimizationEntry
+    ) : PrimitiveAppliedOptimization
+
+    data class GroupedVisibilityBlock(
+        val visibleExpression: String,
+        val instructionCount: Int,
+    ) : PrimitiveAppliedOptimization
+
+    data class CachedTextLayout(
+        val drawTextInstructionCount: Int,
+    ) : PrimitiveAppliedOptimization
+
+    data class PrecomputedHitRegions(
+        val regionCount: Int,
+    ) : PrimitiveAppliedOptimization
+}
+
+sealed interface PrimitiveSkippedOptimization : PrimitiveOptimizationEntry {
+    data object OptimizationDisabled : PrimitiveSkippedOptimization
+
+    data class SkippedByRegion(
+        val path: String,
+    ) : PrimitiveSkippedOptimization
+
+    data class PassDisabled(
+        val pass: PrimitiveOptimizationPass,
+    ) : PrimitiveSkippedOptimization
+}
+
+sealed interface PrimitiveOptimizationWarning : PrimitiveOptimizationEntry {
+    data class UnsupportedPass(
+        val pass: PrimitiveOptimizationPass,
+        val targetId: String,
+    ) : PrimitiveOptimizationWarning
 }
 
 fun PrimitiveScreenProgram.optimizePrimitive(options: PrimitiveOptimizationOptions = PrimitiveOptimizationOptions()): PrimitiveOptimizationResult {
     if (!options.enabled) {
         return PrimitiveOptimizationResult(
             program = this,
-            report = PrimitiveOptimizationReport(listOf(PrimitiveOptimizationEntry.OptimizationDisabled)),
+            report =
+                PrimitiveOptimizationReport(
+                    skipped = listOf(PrimitiveSkippedOptimization.OptimizationDisabled),
+                ),
         )
     }
 
-    val entries = ArrayList<PrimitiveOptimizationEntry>()
+    val report = PrimitiveOptimizationReportBuilder(options)
     val optimizedRenderInstructions =
         renderInstructions.mapNotNull { instruction ->
-            if (instruction.path in options.excludedPaths) {
-                entries += PrimitiveOptimizationEntry.SkippedByPath(instruction.path)
+            if (instruction.path in options.disabledRegions) {
+                report.skipped += PrimitiveSkippedOptimization.SkippedByRegion(instruction.path)
                 instruction
             } else {
-                instruction.optimize(entries)
+                instruction.optimize(options, report)
             }
         }.let { instructions ->
-            if (options.mergeAdjacentFills) {
+            if (options.enables(PrimitiveOptimizationPass.AdjacentFillMerging)) {
                 instructions.mergeAdjacentFills(
-                    excludedPaths = options.excludedPaths,
-                    entries = entries,
+                    disabledRegions = options.disabledRegions,
+                    report = report,
                 )
             } else {
                 instructions
@@ -89,32 +164,63 @@ fun PrimitiveScreenProgram.optimizePrimitive(options: PrimitiveOptimizationOptio
     val optimizedInputInstructions =
         inputInstructions.mapNotNull { instruction ->
             val path = instruction.path()
-            if (path in options.excludedPaths) {
-                entries += PrimitiveOptimizationEntry.SkippedByPath(path)
+            if (path in options.disabledRegions) {
+                report.skipped += PrimitiveSkippedOptimization.SkippedByRegion(path)
                 instruction
             } else {
-                instruction.optimize(entries)
+                instruction.optimize(options, report)
             }
         }
 
+    report.recordDisabledPasses()
     return PrimitiveOptimizationResult(
         program =
             PrimitiveScreenProgram(
                 renderInstructions = optimizedRenderInstructions,
                 inputInstructions = optimizedInputInstructions,
             ),
-        report = PrimitiveOptimizationReport(entries),
+        report = report.build(),
     )
 }
 
-private fun PrimitiveRenderInstruction.optimize(entries: MutableList<PrimitiveOptimizationEntry>): PrimitiveRenderInstruction? {
+private class PrimitiveOptimizationReportBuilder(
+    private val options: PrimitiveOptimizationOptions,
+) {
+    val applied: MutableList<PrimitiveAppliedOptimization> = ArrayList()
+    val skipped: MutableList<PrimitiveSkippedOptimization> = ArrayList()
+    val warnings: MutableList<PrimitiveOptimizationWarning> = ArrayList()
+
+    fun recordDisabledPasses() {
+        PrimitiveOptimizationPass.primitiveProgramPasses
+            .filter { it !in options.passes }
+            .forEach { pass ->
+                skipped += PrimitiveSkippedOptimization.PassDisabled(pass)
+            }
+    }
+
+    fun build(): PrimitiveOptimizationReport =
+        PrimitiveOptimizationReport(
+            applied = applied,
+            skipped = skipped,
+            warnings = warnings,
+        )
+}
+
+private fun PrimitiveRenderInstruction.optimize(
+    options: PrimitiveOptimizationOptions,
+    report: PrimitiveOptimizationReportBuilder,
+): PrimitiveRenderInstruction? {
     when (visible) {
         PrimitiveValueExpression.Constant(false) -> {
-            entries += PrimitiveOptimizationEntry.RemovedAlwaysInvisibleInstruction(path)
-            return null
+            if (options.enables(PrimitiveOptimizationPass.DeadBranchElimination)) {
+                report.applied += PrimitiveAppliedOptimization.RemovedAlwaysInvisibleInstruction(path)
+                return null
+            }
         }
         PrimitiveValueExpression.Constant(true) -> {
-            entries += PrimitiveOptimizationEntry.FoldedConstantVisibility(path, visible = true)
+            if (options.enables(PrimitiveOptimizationPass.ConstantFolding)) {
+                report.applied += PrimitiveAppliedOptimization.FoldedConstantVisibility(path, visible = true)
+            }
         }
         null,
         is PrimitiveValueExpression.StateField,
@@ -123,14 +229,15 @@ private fun PrimitiveRenderInstruction.optimize(entries: MutableList<PrimitiveOp
     }
 
     val foldedVisibility =
-        when (visible) {
-            PrimitiveValueExpression.Constant(true) -> null
+        when {
+            !options.enables(PrimitiveOptimizationPass.ConstantFolding) -> visible
+            visible == PrimitiveValueExpression.Constant(true) -> null
             else -> visible
         }
     val originPosition = origin.asConstantPosition()
     val foldedOp =
-        if (originPosition != null) {
-            entries += PrimitiveOptimizationEntry.FoldedConstantOrigin(path, originPosition.x, originPosition.y)
+        if (originPosition != null && options.enables(PrimitiveOptimizationPass.ConstantFolding)) {
+            report.applied += PrimitiveAppliedOptimization.FoldedConstantOrigin(path, originPosition.x, originPosition.y)
             op.shifted(originPosition.x, originPosition.y)
         } else {
             op
@@ -138,14 +245,17 @@ private fun PrimitiveRenderInstruction.optimize(entries: MutableList<PrimitiveOp
 
     return copy(
         visible = foldedVisibility,
-        origin = if (originPosition != null) null else origin,
+        origin = if (originPosition != null && options.enables(PrimitiveOptimizationPass.ConstantFolding)) null else origin,
         op = foldedOp,
     )
 }
 
-private fun PrimitiveInputInstruction.optimize(entries: MutableList<PrimitiveOptimizationEntry>): PrimitiveInputInstruction? =
+private fun PrimitiveInputInstruction.optimize(
+    options: PrimitiveOptimizationOptions,
+    report: PrimitiveOptimizationReportBuilder,
+): PrimitiveInputInstruction? =
     when (this) {
-        is PrimitiveInputInstruction.ClickRegion -> optimize(entries)
+        is PrimitiveInputInstruction.ClickRegion -> optimize(options, report)
     }
 
 private fun PrimitiveInputInstruction.path(): String =
@@ -153,14 +263,21 @@ private fun PrimitiveInputInstruction.path(): String =
         is PrimitiveInputInstruction.ClickRegion -> path
     }
 
-private fun PrimitiveInputInstruction.ClickRegion.optimize(entries: MutableList<PrimitiveOptimizationEntry>): PrimitiveInputInstruction.ClickRegion? {
+private fun PrimitiveInputInstruction.ClickRegion.optimize(
+    options: PrimitiveOptimizationOptions,
+    report: PrimitiveOptimizationReportBuilder,
+): PrimitiveInputInstruction.ClickRegion? {
     when (visible) {
         PrimitiveValueExpression.Constant(false) -> {
-            entries += PrimitiveOptimizationEntry.RemovedAlwaysInvisibleInstruction(path)
-            return null
+            if (options.enables(PrimitiveOptimizationPass.DeadBranchElimination)) {
+                report.applied += PrimitiveAppliedOptimization.RemovedAlwaysInvisibleInstruction(path)
+                return null
+            }
         }
         PrimitiveValueExpression.Constant(true) -> {
-            entries += PrimitiveOptimizationEntry.FoldedConstantVisibility(path, visible = true)
+            if (options.enables(PrimitiveOptimizationPass.ConstantFolding)) {
+                report.applied += PrimitiveAppliedOptimization.FoldedConstantVisibility(path, visible = true)
+            }
         }
         null,
         is PrimitiveValueExpression.StateField,
@@ -169,25 +286,27 @@ private fun PrimitiveInputInstruction.ClickRegion.optimize(entries: MutableList<
     }
 
     val originPosition = origin.asConstantPosition()
-    if (originPosition != null) {
-        entries += PrimitiveOptimizationEntry.FoldedConstantOrigin(path, originPosition.x, originPosition.y)
+    if (originPosition != null && options.enables(PrimitiveOptimizationPass.ConstantFolding)) {
+        report.applied += PrimitiveAppliedOptimization.FoldedConstantOrigin(path, originPosition.x, originPosition.y)
     }
+    val foldConstants = options.enables(PrimitiveOptimizationPass.ConstantFolding)
 
     return copy(
         visible =
-            when (visible) {
-                PrimitiveValueExpression.Constant(true) -> null
+            when {
+                !foldConstants -> visible
+                visible == PrimitiveValueExpression.Constant(true) -> null
                 else -> visible
             },
-        origin = if (originPosition != null) null else origin,
-        x = x + (originPosition?.x ?: 0),
-        y = y + (originPosition?.y ?: 0),
+        origin = if (originPosition != null && foldConstants) null else origin,
+        x = x + if (foldConstants) originPosition?.x ?: 0 else 0,
+        y = y + if (foldConstants) originPosition?.y ?: 0 else 0,
     )
 }
 
 private fun List<PrimitiveRenderInstruction>.mergeAdjacentFills(
-    excludedPaths: Set<String>,
-    entries: MutableList<PrimitiveOptimizationEntry>,
+    disabledRegions: Set<String>,
+    report: PrimitiveOptimizationReportBuilder,
 ): List<PrimitiveRenderInstruction> {
     val result = ArrayList<PrimitiveRenderInstruction>(size)
     var index = 0
@@ -196,13 +315,13 @@ private fun List<PrimitiveRenderInstruction>.mergeAdjacentFills(
         val next = getOrNull(index + 1)
         if (
             next != null &&
-            current.path !in excludedPaths &&
-            next.path !in excludedPaths &&
+            current.path !in disabledRegions &&
+            next.path !in disabledRegions &&
             current.canMergeWith(next)
         ) {
             val merged = current.mergeWith(next)
-            entries +=
-                PrimitiveOptimizationEntry.MergedAdjacentFills(
+            report.applied +=
+                PrimitiveAppliedOptimization.MergedAdjacentFills(
                     firstPath = current.path,
                     secondPath = next.path,
                     mergedPath = merged.path,

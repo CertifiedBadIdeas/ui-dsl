@@ -199,6 +199,79 @@ class MinecraftScreenSourceGeneratorTest {
     }
 
     @Test
+    fun minecraftSourceCanDisableGeneratorOptimizations() {
+        val primitive =
+            PrimitiveScreenProgram(
+                renderInstructions =
+                    listOf(
+                        PrimitiveRenderInstruction(
+                            path = "first",
+                            visible = PrimitiveValueExpression.StateField("visible"),
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.DrawText(
+                                    x = 0,
+                                    y = 0,
+                                    width = 20,
+                                    height = 9,
+                                    text = PrimitiveValueExpression.StateField("title"),
+                                    color = PrimitiveValueExpression.Constant(Color.White),
+                                ),
+                        ),
+                        PrimitiveRenderInstruction(
+                            path = "second",
+                            visible = PrimitiveValueExpression.StateField("visible"),
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.FillRect(
+                                    x = 0,
+                                    y = 10,
+                                    width = 20,
+                                    height = 10,
+                                    color = PrimitiveValueExpression.Constant(Color.Blue),
+                                ),
+                        ),
+                    ),
+                inputInstructions =
+                    listOf(
+                        PrimitiveInputInstruction.ClickRegion(
+                            path = "click",
+                            visible = null,
+                            origin = PrimitiveValueExpression.StateField("origin"),
+                            x = 0,
+                            y = 0,
+                            width = 20,
+                            height = 20,
+                            action = PrimitiveValueExpression.StateField("action"),
+                        ),
+                    ),
+            )
+
+        val generated =
+            primitive.generateMinecraftScreenSource(
+                packageName = "ru.lazyhat.generated",
+                className = "GeneratedMinecraftScreen",
+                stateType = "ScreenState",
+                actionType = "TestAction",
+                optimization =
+                    PrimitiveOptimizationOptions(
+                        passes =
+                            PrimitiveOptimizationPass.default -
+                                setOf(
+                                    PrimitiveOptimizationPass.TextLayoutCaching,
+                                    PrimitiveOptimizationPass.HitRegionPrecompute,
+                                    PrimitiveOptimizationPass.VisibilityBlockGrouping,
+                                ),
+                    ),
+        )
+
+        assertFalse("textLayoutCache" in generated.source)
+        assertFalse("hitRegions" in generated.source)
+        assertEquals(2, generated.source.countOccurrences("if (state.visible) {"))
+        assertTrue("return state.action" in generated.source, generated.source)
+    }
+
+    @Test
     fun minecraftSourceUsesPrecomputedHitRegions() {
         val primitive =
             PrimitiveScreenProgram(

@@ -10,6 +10,7 @@ fun PrimitiveScreenProgram.generateMinecraftScreenSource(
     className: String,
     stateType: String,
     actionType: String,
+    optimization: PrimitiveOptimizationOptions = PrimitiveOptimizationOptions(),
 ): PrimitiveScreenSource {
     require(packageName.isValidQualifiedIdentifier()) {
         "packageName must be a valid qualified Kotlin identifier"
@@ -38,7 +39,7 @@ fun PrimitiveScreenProgram.generateMinecraftScreenSource(
                 listOf(
                     KotlinClassDeclaration(
                         name = className,
-                        members = minecraftClassMembers(stateType, actionType),
+                        members = minecraftClassMembers(stateType, actionType, optimization),
                     ),
                 ),
         ).render()
@@ -69,9 +70,13 @@ private fun PrimitiveScreenProgram.rejectUnsupportedMinecraftOps() {
 private fun PrimitiveScreenProgram.minecraftClassMembers(
     stateType: String,
     actionType: String,
+    optimization: PrimitiveOptimizationOptions,
 ): List<KotlinClassMember> =
     buildList {
         val program = this@minecraftClassMembers
+        val cacheTextLayout = optimization.enables(PrimitiveOptimizationPass.TextLayoutCaching)
+        val precomputeHitRegions = optimization.enables(PrimitiveOptimizationPass.HitRegionPrecompute)
+        val groupVisibilityBlocks = optimization.enables(PrimitiveOptimizationPass.VisibilityBlockGrouping)
         add(
             KotlinPropertyDeclaration(
                 name = "clipStack",
@@ -79,8 +84,12 @@ private fun PrimitiveScreenProgram.minecraftClassMembers(
                 modifiers = listOf("private"),
             ),
         )
-        add(minecraftTextLayoutCacheMember())
-        add(program.inputInstructions.minecraftHitRegionsMember())
+        if (cacheTextLayout) {
+            add(minecraftTextLayoutCacheMember())
+        }
+        if (precomputeHitRegions) {
+            add(program.inputInstructions.minecraftHitRegionsMember())
+        }
         add(
             KotlinFunctionDeclaration(
                 name = "render",
@@ -94,7 +103,7 @@ private fun PrimitiveScreenProgram.minecraftClassMembers(
                         statements =
                             buildList {
                                 add(KotlinStatement.Expression("clipStack.clear()"))
-                                addAll(program.renderInstructions.minecraftRenderStatements())
+                                addAll(program.renderInstructions.minecraftRenderStatements(groupVisibilityBlocks))
                                 add(
                                     KotlinStatement.If(
                                         condition = "clipStack.isNotEmpty()",
@@ -118,9 +127,11 @@ private fun PrimitiveScreenProgram.minecraftClassMembers(
                 body =
                     KotlinBlock(
                         statements =
-                            listOf(
-                                KotlinStatement.Expression("textLayoutCache.clear()"),
-                            ),
+                            if (cacheTextLayout) {
+                                listOf(KotlinStatement.Expression("textLayoutCache.clear()"))
+                            } else {
+                                emptyList()
+                            },
                     ),
             ),
         )
@@ -138,14 +149,16 @@ private fun PrimitiveScreenProgram.minecraftClassMembers(
                     KotlinBlock(
                         statements =
                             buildList {
-                                addAll(program.inputInstructions.minecraftInputStatements())
+                                addAll(program.inputInstructions.minecraftInputStatements(precomputeHitRegions))
                                 add(KotlinStatement.Return("null"))
                             },
                     ),
             ),
         )
-        program.inputInstructions.minecraftInputHelpersMember(stateType, actionType)?.let(::add)
-        add(minecraftHelpersMember())
+        if (precomputeHitRegions) {
+            program.inputInstructions.minecraftInputHelpersMember(stateType, actionType)?.let(::add)
+        }
+        add(minecraftHelpersMember(cacheTextLayout))
     }
 
 private fun minecraftTextLayoutCacheMember(): KotlinClassMember =
@@ -181,31 +194,55 @@ private fun List<PrimitiveInputInstruction>.minecraftHitRegionsMember(): KotlinC
     )
 }
 
-private fun List<PrimitiveRenderInstruction>.minecraftRenderStatements(): List<KotlinStatement> =
+private fun List<PrimitiveRenderInstruction>.minecraftRenderStatements(groupVisibilityBlocks: Boolean): List<KotlinStatement> =
+    if (groupVisibilityBlocks) {
+        groupedMinecraftRenderStatements()
+    } else {
+        flatMinecraftRenderStatements()
+    }
+
+private fun List<PrimitiveRenderInstruction>.groupedMinecraftRenderStatements(): List<KotlinStatement> =
     buildList {
         var index = 0
-        while (index < this@minecraftRenderStatements.size) {
-            val visible = this@minecraftRenderStatements[index].visible
+        while (index < this@groupedMinecraftRenderStatements.size) {
+            val visible = this@groupedMinecraftRenderStatements[index].visible
             val end = nextDifferentVisibilityIndex(index)
             val statements =
                 buildList {
                     for (instructionIndex in index until end) {
-                        addAll(this@minecraftRenderStatements[instructionIndex].minecraftRenderStatements(instructionIndex))
+                        addAll(this@groupedMinecraftRenderStatements[instructionIndex].minecraftRenderStatements(instructionIndex))
                     }
                 }
-            if (visible == null) {
-                addAll(statements)
-            } else {
-                add(
-                    KotlinStatement.If(
-                        condition = visible.kotlinExpression(),
-                        body = KotlinBlock(statements),
-                    ),
-                )
-            }
+            addVisibleStatements(visible, statements)
             index = end
         }
     }
+
+private fun List<PrimitiveRenderInstruction>.flatMinecraftRenderStatements(): List<KotlinStatement> =
+    buildList {
+        this@flatMinecraftRenderStatements.forEachIndexed { index, instruction ->
+            addVisibleStatements(
+                visible = instruction.visible,
+                statements = instruction.minecraftRenderStatements(index),
+            )
+        }
+    }
+
+private fun MutableList<KotlinStatement>.addVisibleStatements(
+    visible: PrimitiveValueExpression?,
+    statements: List<KotlinStatement>,
+) {
+    if (visible == null) {
+        addAll(statements)
+    } else {
+        add(
+            KotlinStatement.If(
+                condition = visible.kotlinExpression(),
+                body = KotlinBlock(statements),
+            ),
+        )
+    }
+}
 
 private fun PrimitiveRenderInstruction.minecraftRenderStatements(index: Int): List<KotlinStatement> =
     buildList {
@@ -268,7 +305,14 @@ private fun List<PrimitiveRenderInstruction>.nextDifferentVisibilityIndex(start:
     return index
 }
 
-private fun List<PrimitiveInputInstruction>.minecraftInputStatements(): List<KotlinStatement> {
+private fun List<PrimitiveInputInstruction>.minecraftInputStatements(precomputeHitRegions: Boolean): List<KotlinStatement> =
+    if (precomputeHitRegions) {
+        precomputedMinecraftInputStatements()
+    } else {
+        inlineMinecraftInputStatements()
+    }
+
+private fun List<PrimitiveInputInstruction>.precomputedMinecraftInputStatements(): List<KotlinStatement> {
     val regions = filterIsInstance<PrimitiveInputInstruction.ClickRegion>()
     if (regions.isEmpty()) return emptyList()
     return listOf(
@@ -296,6 +340,38 @@ private fun List<PrimitiveInputInstruction>.minecraftInputStatements(): List<Kot
         ),
     )
 }
+
+private fun List<PrimitiveInputInstruction>.inlineMinecraftInputStatements(): List<KotlinStatement> =
+    buildList {
+        this@inlineMinecraftInputStatements
+            .filterIsInstance<PrimitiveInputInstruction.ClickRegion>()
+            .forEachIndexed { index, region ->
+                val statements =
+                    buildList {
+                        if (region.origin != null) {
+                            add(KotlinStatement.Expression("val inputOrigin$index = ${region.origin.kotlinExpression()}"))
+                            add(KotlinStatement.Expression("val inputOx$index = inputOrigin$index.x"))
+                            add(KotlinStatement.Expression("val inputOy$index = inputOrigin$index.y"))
+                        }
+                        val ox = if (region.origin == null) "" else " + inputOx$index"
+                        val oy = if (region.origin == null) "" else " + inputOy$index"
+                        add(
+                            KotlinStatement.If(
+                                condition =
+                                    "x >= ${region.x}$ox && y >= ${region.y}$oy && x < ${region.x}$ox + ${region.width} && y < ${region.y}$oy + ${region.height}",
+                                body =
+                                    KotlinBlock(
+                                        statements =
+                                            listOf(
+                                                KotlinStatement.Return(region.action?.kotlinExpression() ?: "null"),
+                                            ),
+                                    ),
+                            ),
+                        )
+                    }
+                addVisibleStatements(region.visible, statements)
+            }
+    }
 
 private fun List<PrimitiveInputInstruction>.minecraftInputHelpersMember(
     stateType: String,
@@ -350,15 +426,15 @@ private fun StringBuilder.appendMinecraftInputHelpers(
     appendLine("        }")
 }
 
-private fun minecraftHelpersMember(): KotlinClassMember =
+private fun minecraftHelpersMember(cacheTextLayout: Boolean): KotlinClassMember =
     KotlinRawClassMember(
         lines =
             buildString {
-                appendMinecraftHelpers()
+                appendMinecraftHelpers(cacheTextLayout)
             }.toClassMemberLines(),
     )
 
-private fun StringBuilder.appendMinecraftHelpers() {
+private fun StringBuilder.appendMinecraftHelpers(cacheTextLayout: Boolean) {
     appendLine()
     appendLine("    private fun drawText(")
     appendLine("        graphics: GuiGraphics,")
@@ -383,11 +459,15 @@ private fun StringBuilder.appendMinecraftHelpers() {
     appendLine("                else -> minOf(maxLines, visibleLineCount)")
     appendLine("            }")
     appendLine("        if (effectiveMaxLines <= 0) return")
-    appendLine("        val key = TextLayoutKey(font, text, width, height, wrap, maxLines, lineHeight, overflow)")
-    appendLine("        val finalLines =")
-    appendLine("            textLayoutCache.getOrPut(key) {")
-    appendLine("                buildFinalTextLines(font, text, width, wrap, overflow, effectiveMaxLines)")
-    appendLine("            }")
+    if (cacheTextLayout) {
+        appendLine("        val key = TextLayoutKey(font, text, width, height, wrap, maxLines, lineHeight, overflow)")
+        appendLine("        val finalLines =")
+        appendLine("            textLayoutCache.getOrPut(key) {")
+        appendLine("                buildFinalTextLines(font, text, width, wrap, overflow, effectiveMaxLines)")
+        appendLine("            }")
+    } else {
+        appendLine("        val finalLines = buildFinalTextLines(font, text, width, wrap, overflow, effectiveMaxLines)")
+    }
     appendLine("        pushClip(graphics, x, y, width, height)")
     appendLine("        try {")
     appendLine("            finalLines.forEachIndexed { index, line ->")

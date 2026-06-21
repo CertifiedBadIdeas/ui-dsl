@@ -51,10 +51,10 @@ class PrimitiveTargetSourceGeneratorTest {
         assertTrue("graphics.fill(3, 4, 13, 14, 0xFF0000FF.toInt())" in minecraft.source.source)
         assertEquals(
             PrimitiveOptimizationReport(
-                entries =
+                applied =
                     listOf(
-                        PrimitiveOptimizationEntry.FoldedConstantVisibility("panel", visible = true),
-                        PrimitiveOptimizationEntry.FoldedConstantOrigin("panel", x = 2, y = 3),
+                        PrimitiveAppliedOptimization.FoldedConstantVisibility("panel", visible = true),
+                        PrimitiveAppliedOptimization.FoldedConstantOrigin("panel", x = 2, y = 3),
                     ),
             ),
             preview.optimizationReport,
@@ -97,11 +97,95 @@ class PrimitiveTargetSourceGeneratorTest {
             )
 
         assertEquals(
-            PrimitiveOptimizationReport(listOf(PrimitiveOptimizationEntry.OptimizationDisabled)),
+            PrimitiveOptimizationReport(
+                skipped = listOf(PrimitiveSkippedOptimization.OptimizationDisabled),
+            ),
             result.optimizationReport,
         )
         assertTrue("if (true) {" in result.source.source)
         assertTrue("val origin0 = Position(2, 3)" in result.source.source)
+    }
+
+    @Test
+    fun targetGeneratorReportsMinecraftSourceOptimizations() {
+        val program = programWithMinecraftSourceOptimizations()
+
+        val result =
+            program.generateTargetSource(
+                target = PrimitiveSourceTargets.minecraftGuiGraphics,
+                request = request("GeneratedMinecraft").copy(actionType = "String"),
+            )
+
+        assertTrue(
+            PrimitiveAppliedOptimization.GroupedVisibilityBlock(
+                visibleExpression = "state.visible",
+                instructionCount = 2,
+            ) in result.optimizationReport.applied,
+        )
+        assertTrue(
+            PrimitiveAppliedOptimization.CachedTextLayout(drawTextInstructionCount = 2) in
+                result.optimizationReport.applied,
+        )
+        assertTrue(
+            PrimitiveAppliedOptimization.PrecomputedHitRegions(regionCount = 1) in
+                result.optimizationReport.applied,
+        )
+    }
+
+    @Test
+    fun targetGeneratorReportsDisabledMinecraftSourceOptimizations() {
+        val program = programWithMinecraftSourceOptimizations()
+
+        val result =
+            program.generateTargetSource(
+                target = PrimitiveSourceTargets.minecraftGuiGraphics,
+                request =
+                    request("GeneratedMinecraft").copy(
+                        actionType = "String",
+                        optimization =
+                            PrimitiveOptimizationOptions(
+                                passes =
+                                    PrimitiveOptimizationPass.default -
+                                        setOf(
+                                            PrimitiveOptimizationPass.TextLayoutCaching,
+                                            PrimitiveOptimizationPass.HitRegionPrecompute,
+                                            PrimitiveOptimizationPass.VisibilityBlockGrouping,
+                                        ),
+                            ),
+                    ),
+            )
+
+        assertTrue(PrimitiveSkippedOptimization.PassDisabled(PrimitiveOptimizationPass.TextLayoutCaching) in result.optimizationReport.skipped)
+        assertTrue(PrimitiveSkippedOptimization.PassDisabled(PrimitiveOptimizationPass.HitRegionPrecompute) in result.optimizationReport.skipped)
+        assertTrue(PrimitiveSkippedOptimization.PassDisabled(PrimitiveOptimizationPass.VisibilityBlockGrouping) in result.optimizationReport.skipped)
+    }
+
+    @Test
+    fun targetGeneratorWarnsAboutUnsupportedOptimizationPasses() {
+        val program =
+            PrimitiveScreenProgram(
+                renderInstructions = emptyList(),
+                inputInstructions = emptyList(),
+            )
+
+        val result =
+            program.generateTargetSource(
+                target = PrimitiveSourceTargets.minecraftGuiGraphics,
+                request =
+                    request("GeneratedMinecraft").copy(
+                        optimization =
+                            PrimitiveOptimizationOptions(
+                                passes = PrimitiveOptimizationPass.default + PrimitiveOptimizationPass.StaticTextureBaking,
+                            ),
+                    ),
+            )
+
+        assertTrue(
+            PrimitiveOptimizationWarning.UnsupportedPass(
+                pass = PrimitiveOptimizationPass.StaticTextureBaking,
+                targetId = "minecraft-gui-graphics",
+            ) in result.optimizationReport.warnings,
+        )
     }
 
     @Test
@@ -147,5 +231,53 @@ class PrimitiveTargetSourceGeneratorTest {
             className = className,
             stateType = "ScreenState",
             actionType = "TestAction",
+        )
+
+    private fun programWithMinecraftSourceOptimizations(): PrimitiveScreenProgram =
+        PrimitiveScreenProgram(
+            renderInstructions =
+                listOf(
+                    PrimitiveRenderInstruction(
+                        path = "title",
+                        visible = PrimitiveValueExpression.StateField("visible"),
+                        origin = null,
+                        op =
+                            PrimitiveRenderOp.DrawText(
+                                x = 0,
+                                y = 0,
+                                width = 80,
+                                height = 9,
+                                text = PrimitiveValueExpression.Constant("Title"),
+                                color = PrimitiveValueExpression.Constant(Color.White),
+                            ),
+                    ),
+                    PrimitiveRenderInstruction(
+                        path = "subtitle",
+                        visible = PrimitiveValueExpression.StateField("visible"),
+                        origin = null,
+                        op =
+                            PrimitiveRenderOp.DrawText(
+                                x = 0,
+                                y = 10,
+                                width = 80,
+                                height = 9,
+                                text = PrimitiveValueExpression.Constant("Subtitle"),
+                                color = PrimitiveValueExpression.Constant(Color.White),
+                            ),
+                    ),
+                ),
+            inputInstructions =
+                listOf(
+                    PrimitiveInputInstruction.ClickRegion(
+                        path = "open",
+                        visible = null,
+                        origin = null,
+                        x = 0,
+                        y = 0,
+                        width = 80,
+                        height = 20,
+                        action = PrimitiveValueExpression.Constant("open"),
+                    ),
+                ),
         )
 }

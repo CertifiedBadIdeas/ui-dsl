@@ -81,14 +81,14 @@ class PrimitiveScreenOptimizerTest {
         )
         assertEquals(
             PrimitiveOptimizationReport(
-                entries =
+                applied =
                     listOf(
-                        PrimitiveOptimizationEntry.RemovedAlwaysInvisibleInstruction("hidden-fill"),
-                        PrimitiveOptimizationEntry.FoldedConstantVisibility("shifted-fill", visible = true),
-                        PrimitiveOptimizationEntry.FoldedConstantOrigin("shifted-fill", x = 4, y = 5),
-                        PrimitiveOptimizationEntry.RemovedAlwaysInvisibleInstruction("hidden-click"),
-                        PrimitiveOptimizationEntry.FoldedConstantVisibility("shifted-click", visible = true),
-                        PrimitiveOptimizationEntry.FoldedConstantOrigin("shifted-click", x = 8, y = 9),
+                        PrimitiveAppliedOptimization.RemovedAlwaysInvisibleInstruction("hidden-fill"),
+                        PrimitiveAppliedOptimization.FoldedConstantVisibility("shifted-fill", visible = true),
+                        PrimitiveAppliedOptimization.FoldedConstantOrigin("shifted-fill", x = 4, y = 5),
+                        PrimitiveAppliedOptimization.RemovedAlwaysInvisibleInstruction("hidden-click"),
+                        PrimitiveAppliedOptimization.FoldedConstantVisibility("shifted-click", visible = true),
+                        PrimitiveAppliedOptimization.FoldedConstantOrigin("shifted-click", x = 8, y = 9),
                     ),
             ),
             result.report,
@@ -144,9 +144,9 @@ class PrimitiveScreenOptimizerTest {
         )
         assertEquals(
             PrimitiveOptimizationReport(
-                entries =
+                applied =
                     listOf(
-                        PrimitiveOptimizationEntry.MergedAdjacentFills(
+                        PrimitiveAppliedOptimization.MergedAdjacentFills(
                             firstPath = "left",
                             secondPath = "right",
                             mergedPath = "left",
@@ -182,7 +182,10 @@ class PrimitiveScreenOptimizerTest {
         assertEquals(
             PrimitiveOptimizationResult(
                 program = program,
-                report = PrimitiveOptimizationReport(listOf(PrimitiveOptimizationEntry.OptimizationDisabled)),
+                report =
+                    PrimitiveOptimizationReport(
+                        skipped = listOf(PrimitiveSkippedOptimization.OptimizationDisabled),
+                    ),
             ),
             program.optimizePrimitive(PrimitiveOptimizationOptions(enabled = false)),
         )
@@ -190,7 +193,7 @@ class PrimitiveScreenOptimizerTest {
         val result =
             program.optimizePrimitive(
                 PrimitiveOptimizationOptions(
-                    excludedPaths = setOf("protected"),
+                    disabledRegions = setOf("protected"),
                 ),
             )
 
@@ -206,14 +209,85 @@ class PrimitiveScreenOptimizerTest {
         )
         assertEquals(
             PrimitiveOptimizationReport(
-                entries =
+                applied =
                     listOf(
-                        PrimitiveOptimizationEntry.SkippedByPath("protected"),
-                        PrimitiveOptimizationEntry.FoldedConstantVisibility("normal", visible = true),
-                        PrimitiveOptimizationEntry.FoldedConstantOrigin("normal", x = 3, y = 4),
+                        PrimitiveAppliedOptimization.FoldedConstantVisibility("normal", visible = true),
+                        PrimitiveAppliedOptimization.FoldedConstantOrigin("normal", x = 3, y = 4),
+                    ),
+                skipped =
+                    listOf(
+                        PrimitiveSkippedOptimization.SkippedByRegion("protected"),
                     ),
             ),
             result.report,
+        )
+    }
+
+    @Test
+    fun optimizerPassesCanBeTargetedAndReported() {
+        val program =
+            PrimitiveScreenProgram(
+                renderInstructions =
+                    listOf(
+                        PrimitiveRenderInstruction(
+                            path = "hidden",
+                            visible = PrimitiveValueExpression.Constant(false),
+                            origin = PrimitiveValueExpression.Constant(Position(2, 3)),
+                            op = fill(x = 0, y = 0, width = 10, height = 10),
+                        ),
+                        PrimitiveRenderInstruction(
+                            path = "visible",
+                            visible = PrimitiveValueExpression.Constant(true),
+                            origin = PrimitiveValueExpression.Constant(Position(4, 5)),
+                            op = fill(x = 0, y = 0, width = 10, height = 10),
+                        ),
+                    ),
+                inputInstructions = emptyList(),
+            )
+
+        val result =
+            program.optimizePrimitive(
+                PrimitiveOptimizationOptions(
+                    passes =
+                        setOf(
+                            PrimitiveOptimizationPass.ConstantFolding,
+                        ),
+                ),
+            )
+
+        assertEquals(2, result.program.renderInstructions.size)
+        assertEquals(
+            PrimitiveRenderInstruction(
+                path = "hidden",
+                visible = PrimitiveValueExpression.Constant(false),
+                origin = null,
+                op = fill(x = 2, y = 3, width = 10, height = 10),
+            ),
+            result.program.renderInstructions[0],
+        )
+        assertEquals(
+            PrimitiveRenderInstruction(
+                path = "visible",
+                visible = null,
+                origin = null,
+                op = fill(x = 4, y = 5, width = 10, height = 10),
+            ),
+            result.program.renderInstructions[1],
+        )
+        assertEquals(
+            listOf(
+                PrimitiveAppliedOptimization.FoldedConstantOrigin("hidden", x = 2, y = 3),
+                PrimitiveAppliedOptimization.FoldedConstantVisibility("visible", visible = true),
+                PrimitiveAppliedOptimization.FoldedConstantOrigin("visible", x = 4, y = 5),
+            ),
+            result.report.applied,
+        )
+        assertEquals(
+            listOf(
+                PrimitiveSkippedOptimization.PassDisabled(PrimitiveOptimizationPass.DeadBranchElimination),
+                PrimitiveSkippedOptimization.PassDisabled(PrimitiveOptimizationPass.AdjacentFillMerging),
+            ),
+            result.report.skipped,
         )
     }
 

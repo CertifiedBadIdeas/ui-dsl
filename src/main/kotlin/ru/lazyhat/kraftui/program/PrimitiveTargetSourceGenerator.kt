@@ -54,6 +54,7 @@ object PrimitiveSourceTargets {
                     className = request.className,
                     stateType = request.stateType,
                     actionType = request.actionType,
+                    optimization = request.optimization,
                 )
             },
         )
@@ -64,6 +65,11 @@ fun PrimitiveScreenProgram.generateTargetSource(
     request: PrimitiveTargetSourceRequest,
 ): PrimitiveTargetSourceResult {
     val optimized = optimizePrimitive(request.optimization)
+    val sourceOptimizationReport =
+        optimized.program.sourceOptimizationReport(
+            target = target,
+            options = request.optimization,
+        )
     val analysis =
         optimized.program.analyze(
             options =
@@ -81,6 +87,100 @@ fun PrimitiveScreenProgram.generateTargetSource(
         target = target,
         optimizedProgram = optimized.program,
         analysisReport = analysis,
-        optimizationReport = optimized.report,
+        optimizationReport = optimized.report + sourceOptimizationReport,
     )
 }
+
+private fun PrimitiveScreenProgram.sourceOptimizationReport(
+    target: PrimitiveSourceTarget,
+    options: PrimitiveOptimizationOptions,
+): PrimitiveOptimizationReport {
+    if (!options.enabled) {
+        return PrimitiveOptimizationReport()
+    }
+
+    val applied = mutableListOf<PrimitiveAppliedOptimization>()
+    val skipped = mutableListOf<PrimitiveSkippedOptimization>()
+    val warnings = mutableListOf<PrimitiveOptimizationWarning>()
+
+    if (options.enables(PrimitiveOptimizationPass.StaticTextureBaking)) {
+        warnings +=
+            PrimitiveOptimizationWarning.UnsupportedPass(
+                pass = PrimitiveOptimizationPass.StaticTextureBaking,
+                targetId = target.id,
+            )
+    }
+
+    if (target != PrimitiveSourceTargets.minecraftGuiGraphics) {
+        return PrimitiveOptimizationReport(warnings = warnings)
+    }
+
+    val drawTextInstructionCount =
+        renderInstructions.count { instruction ->
+            instruction.op is PrimitiveRenderOp.DrawText
+        }
+    if (drawTextInstructionCount > 0) {
+        if (options.enables(PrimitiveOptimizationPass.TextLayoutCaching)) {
+            applied += PrimitiveAppliedOptimization.CachedTextLayout(drawTextInstructionCount)
+        } else {
+            skipped += PrimitiveSkippedOptimization.PassDisabled(PrimitiveOptimizationPass.TextLayoutCaching)
+        }
+    }
+
+    val hitRegionCount =
+        inputInstructions.count { instruction ->
+            instruction is PrimitiveInputInstruction.ClickRegion
+        }
+    if (hitRegionCount > 0) {
+        if (options.enables(PrimitiveOptimizationPass.HitRegionPrecompute)) {
+            applied += PrimitiveAppliedOptimization.PrecomputedHitRegions(hitRegionCount)
+        } else {
+            skipped += PrimitiveSkippedOptimization.PassDisabled(PrimitiveOptimizationPass.HitRegionPrecompute)
+        }
+    }
+
+    val visibilityGroups = renderInstructions.visibilityGroupsWorthReporting()
+    if (visibilityGroups.isNotEmpty()) {
+        if (options.enables(PrimitiveOptimizationPass.VisibilityBlockGrouping)) {
+            applied += visibilityGroups
+        } else {
+            skipped += PrimitiveSkippedOptimization.PassDisabled(PrimitiveOptimizationPass.VisibilityBlockGrouping)
+        }
+    }
+
+    return PrimitiveOptimizationReport(
+        applied = applied,
+        skipped = skipped,
+        warnings = warnings,
+    )
+}
+
+private fun List<PrimitiveRenderInstruction>.visibilityGroupsWorthReporting(): List<PrimitiveAppliedOptimization.GroupedVisibilityBlock> =
+    buildList {
+        var index = 0
+        while (index < this@visibilityGroupsWorthReporting.size) {
+            val visible = this@visibilityGroupsWorthReporting[index].visible
+            var end = index + 1
+            while (
+                end < this@visibilityGroupsWorthReporting.size &&
+                this@visibilityGroupsWorthReporting[end].visible == visible
+            ) {
+                end++
+            }
+            if (visible != null && end - index > 1) {
+                add(
+                    PrimitiveAppliedOptimization.GroupedVisibilityBlock(
+                        visibleExpression = visible.reportExpression(),
+                        instructionCount = end - index,
+                    ),
+                )
+            }
+            index = end
+        }
+    }
+
+private fun PrimitiveValueExpression.reportExpression(): String =
+    when (this) {
+        is PrimitiveValueExpression.Constant -> value.toString()
+        is PrimitiveValueExpression.StateField -> "state.$fieldName"
+    }
