@@ -158,6 +158,123 @@ class ScreenProgramCompilerTest {
     }
 
     @Test
+    fun optimizedProgramMarksRenderWorkByEffectiveDependencies() {
+        val program =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    box(Modifier.size(40, 20).background(Color.Red))
+                    text(
+                        modifier = Modifier.size(40, 9),
+                        text = value { "Live" },
+                    )
+                    box(Modifier.size(40, 20).background(value { Color.White }))
+                },
+            )
+
+        val optimized = program.optimize()
+
+        assertEquals(3, optimized.renderOps.size)
+        assertTrue(optimized.renderOps[0].effectiveDependencies.isStatic)
+        assertEquals(UiDependencies(dynamicValue = true), optimized.renderOps[1].effectiveDependencies)
+        assertEquals(UiDependencies(dynamicValue = true), optimized.renderOps[2].effectiveDependencies)
+        assertEquals(listOf(optimized.renderOps[0]), optimized.staticRenderOps)
+        assertEquals(2, optimized.dynamicRenderOps.size)
+    }
+
+    @Test
+    fun optimizedProgramIncludesFramePlacementInRenderWorkDependencies() {
+        val program =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    overlay(
+                        modifier = Modifier.size(20, 20),
+                        anchor = value { ru.lazyhat.kraftui.foundation.modifier.Position(4, 6) },
+                    ) {
+                        box(Modifier.size(20, 20).background(Color.Red))
+                    }
+                },
+            )
+
+        val optimized = program.optimize()
+        val overlayFill = optimized.renderOps.single { it.frameIndex == 1 }
+
+        assertEquals(UiDependencies(dynamicOrigin = true), overlayFill.effectiveDependencies)
+        assertEquals(emptyList(), optimized.staticRenderOps)
+        assertEquals(listOf(overlayFill), optimized.dynamicRenderOps)
+    }
+
+    @Test
+    fun optimizedProgramMarksInputWorkByEffectiveDependencies() {
+        val program =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    overlay(
+                        modifier = Modifier.size(20, 20),
+                        anchor = value { ru.lazyhat.kraftui.foundation.modifier.Position(4, 6) },
+                    ) {
+                        box(Modifier.size(20, 20).background(Color.Red))
+                        button(
+                            modifier = Modifier.size(20, 20),
+                            action = value { Unit },
+                        ) {}
+                    }
+                },
+            )
+
+        val optimized = program.optimize()
+        val hit = optimized.hitRegions.single()
+
+        assertEquals(
+            UiDependencies(dynamicOrigin = true, dynamicInput = true),
+            hit.effectiveDependencies,
+        )
+        assertEquals(emptyList(), optimized.staticHitRegions)
+        assertEquals(listOf(hit), optimized.dynamicHitRegions)
+    }
+
+    @Test
+    fun optimizedProgramExposesRenderAndInputInvalidationMasks() {
+        val renderProgram =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    text(
+                        modifier = Modifier.size(40, 9),
+                        text = value { "Live" },
+                    )
+                    overlay(
+                        modifier = Modifier.size(20, 20),
+                        anchor = value { ru.lazyhat.kraftui.foundation.modifier.Position(4, 6) },
+                    ) {
+                        box(Modifier.size(20, 20).background(Color.Red))
+                    }
+                },
+            )
+        val inputProgram =
+            ScreenProgramCompiler(fontMetrics).compile(
+                ui {
+                    overlay(
+                        modifier = Modifier.size(20, 20),
+                        anchor = value { ru.lazyhat.kraftui.foundation.modifier.Position(4, 6) },
+                    ) {
+                        button(modifier = Modifier.size(20, 20), action = value { Unit }) {}
+                    }
+                },
+            )
+
+        val optimizedRender = renderProgram.optimize()
+        val optimizedInput = inputProgram.optimize()
+
+        assertEquals(
+            UiInvalidationMask(value = true, origin = true),
+            optimizedRender.renderInvalidation,
+        )
+        assertEquals(
+            UiInvalidationMask(origin = true, input = true),
+            optimizedInput.inputInvalidation,
+        )
+    }
+
+    @Test
     fun terminalSurfaceIsCollectedAsAFocusNode() {
         val program =
             ScreenProgramCompiler().compile(
