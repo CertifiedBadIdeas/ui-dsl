@@ -47,8 +47,8 @@ class PrimitiveTargetSourceGeneratorTest {
         assertEquals("minecraft-gui-graphics", minecraft.target.id)
         assertTrue("fun render(target: RenderBackend, state: ScreenState)" in preview.source.source)
         assertTrue("target.fillRect(3, 4, 10, 10, Color.Blue)" in preview.source.source)
-        assertTrue("fun render(graphics: GuiGraphics, state: ScreenState)" in minecraft.source.source)
-        assertTrue("graphics.fill(3, 4, 13, 14, 0xFF0000FF.toInt())" in minecraft.source.source)
+        assertTrue("fun render(graphics: GuiGraphics, state: ScreenState, screenOriginX: Int, screenOriginY: Int)" in minecraft.source.source)
+        assertTrue("graphics.fill(3 + screenOriginX, 4 + screenOriginY, 13 + screenOriginX, 14 + screenOriginY, 0xFF0000FF.toInt())" in minecraft.source.source)
         assertEquals(
             PrimitiveOptimizationReport(
                 applied =

@@ -123,6 +123,8 @@ private fun PrimitiveScreenProgram.minecraftClassMembers(
                     listOf(
                         KotlinParameter("graphics", "GuiGraphics"),
                         KotlinParameter("state", stateType),
+                        KotlinParameter("screenOriginX", "Int"),
+                        KotlinParameter("screenOriginY", "Int"),
                     ),
                 body =
                     KotlinBlock(
@@ -284,8 +286,8 @@ private fun PrimitiveRenderOp.minecraftRenderStatements(
     index: Int,
     hasOrigin: Boolean,
 ): List<KotlinStatement> {
-    val ox = if (hasOrigin) " + ox$index" else ""
-    val oy = if (hasOrigin) " + oy$index" else ""
+    val ox = " + screenOriginX" + if (hasOrigin) " + ox$index" else ""
+    val oy = " + screenOriginY" + if (hasOrigin) " + oy$index" else ""
     return when (this) {
         is PrimitiveRenderOp.FillRect ->
             listOf(

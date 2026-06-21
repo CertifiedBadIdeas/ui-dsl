@@ -63,12 +63,12 @@ class MinecraftScreenSourceGeneratorTest {
         assertEquals("GeneratedMinecraftScreen", generated.className)
         assertTrue("import net.minecraft.client.Minecraft" in generated.source)
         assertTrue("import net.minecraft.client.gui.GuiGraphics" in generated.source)
-        assertTrue("fun render(graphics: GuiGraphics, state: ScreenState)" in generated.source)
-        assertTrue("graphics.fill(1, 2, 11, 12, 0xFFFF0000.toInt())" in generated.source)
+        assertTrue("fun render(graphics: GuiGraphics, state: ScreenState, screenOriginX: Int, screenOriginY: Int)" in generated.source)
+        assertTrue("graphics.fill(1 + screenOriginX, 2 + screenOriginY, 11 + screenOriginX, 12 + screenOriginY, 0xFFFF0000.toInt())" in generated.source)
         assertTrue("val origin1 = state.origin" in generated.source)
-        assertTrue("graphics.fill(0 + ox1, 0 + oy1, 50 + ox1, 20 + oy1, 0xFF0000FF.toInt())" in generated.source)
+        assertTrue("graphics.fill(0 + screenOriginX + ox1, 0 + screenOriginY + oy1, 50 + screenOriginX + ox1, 20 + screenOriginY + oy1, 0xFF0000FF.toInt())" in generated.source)
         assertTrue("val font2 = Minecraft.getInstance().font" in generated.source)
-        assertTrue("drawText(graphics, font2, state.title, 0 + ox2, 0 + oy2, 50, 20, 0xFFFFFFFF.toInt(), TextAlignment.Start, TextOverflowPolicy.FailInValidation, false, null, 9)" in generated.source)
+        assertTrue("drawText(graphics, font2, state.title, 0 + screenOriginX + ox2, 0 + screenOriginY + oy2, 50, 20, 0xFFFFFFFF.toInt(), TextAlignment.Start, TextOverflowPolicy.FailInValidation, false, null, 9)" in generated.source)
         assertTrue("fun mouseClicked(state: ScreenState, x: Int, y: Int): TestAction?" in generated.source)
         assertTrue("return hitRegionAction(state, region.id)" in generated.source)
         assertTrue("0 -> state.action" in generated.source)
@@ -101,7 +101,7 @@ class MinecraftScreenSourceGeneratorTest {
             )
 
         assertTrue("if (state.visible) {" in generated.source)
-        assertTrue("graphics.fill(20, 2, 30, 12, 0xFF0000FF.toInt())" in generated.source)
+        assertTrue("graphics.fill(20 + screenOriginX, 2 + screenOriginY, 30 + screenOriginX, 12 + screenOriginY, 0xFF0000FF.toInt())" in generated.source)
         assertFalse("if (!state.visible) return" in generated.source)
     }
 
@@ -194,7 +194,7 @@ class MinecraftScreenSourceGeneratorTest {
             )
 
         assertEquals(1, generated.source.countOccurrences("if (state.overviewVisible) {"))
-        assertTrue("graphics.fill(0, 0, 20, 20, 0xFF0000FF.toInt())" in generated.source)
+        assertTrue("graphics.fill(0 + screenOriginX, 0 + screenOriginY, 20 + screenOriginX, 20 + screenOriginY, 0xFF0000FF.toInt())" in generated.source)
         assertTrue("drawText(graphics" in generated.source)
     }
 
@@ -374,7 +374,7 @@ class MinecraftScreenSourceGeneratorTest {
             "ResourceLocation.fromNamespaceAndPath(\"testmod\", \"textures/gui/generated/baked_0.png\")" in
                 generated.source,
         )
-        assertTrue("graphics.blit(baked_0ResourceName, 4, 5, 0.0f, 0.0f, 2, 1, 2, 1)" in generated.source)
+        assertTrue("graphics.blit(baked_0ResourceName, 4 + screenOriginX, 5 + screenOriginY, 0.0f, 0.0f, 2, 1, 2, 1)" in generated.source)
         assertEquals("assets/testmod/textures/gui/generated/baked_0.png", generated.assets.single().path)
         assertEquals(0x89.toByte(), generated.assets.single().bytes.first())
     }
