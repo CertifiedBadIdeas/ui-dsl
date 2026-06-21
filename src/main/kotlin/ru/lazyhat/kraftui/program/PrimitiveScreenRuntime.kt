@@ -17,6 +17,28 @@ fun PrimitiveScreenProgram.render(
     }
 }
 
+fun PrimitiveScreenProgram.mouseClicked(
+    resolve: (PrimitiveValueExpression) -> Any?,
+    x: Int,
+    y: Int,
+): Any? {
+    inputInstructions.forEach { instruction ->
+        when (instruction) {
+            is PrimitiveInputInstruction.ClickRegion -> {
+                val visible = instruction.visible?.resolveAs<Boolean>(resolve) ?: true
+                if (!visible) return@forEach
+                val origin = instruction.origin?.resolveAs<Position>(resolve) ?: Position.Zero
+                val left = instruction.x + origin.x
+                val top = instruction.y + origin.y
+                if (x >= left && y >= top && x < left + instruction.width && y < top + instruction.height) {
+                    return instruction.action?.resolve(resolve)
+                }
+            }
+        }
+    }
+    return null
+}
+
 private fun PrimitiveRenderOp.render(
     backend: RenderBackend,
     resolve: (PrimitiveValueExpression) -> Any?,
