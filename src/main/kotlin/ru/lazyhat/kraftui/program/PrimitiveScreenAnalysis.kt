@@ -33,6 +33,13 @@ data class PrimitiveProgramAnalysisReport(
 ) {
     val isValid: Boolean
         get() = diagnostics.isEmpty()
+
+    fun asText(): String =
+        if (diagnostics.isEmpty()) {
+            "No primitive program diagnostics"
+        } else {
+            diagnostics.joinToString(separator = "\n") { it.asText() }
+        }
 }
 
 sealed interface PrimitiveProgramDiagnostic {
@@ -298,3 +305,23 @@ private data class PrimitiveRect(
             top < other.bottom &&
             bottom > other.top
 }
+
+private fun PrimitiveProgramDiagnostic.asText(): String =
+    when (this) {
+        is PrimitiveProgramDiagnostic.InvalidRenderBounds ->
+            "$path: invalid render bounds ${width}x$height"
+        is PrimitiveProgramDiagnostic.InvalidInputBounds ->
+            "$path: invalid input bounds ${width}x$height"
+        is PrimitiveProgramDiagnostic.TextWidthOverflow ->
+            "$path: text width overflow, text width $textWidth px, available $width px, policy $policy"
+        is PrimitiveProgramDiagnostic.TextHeightOverflow ->
+            "$path: text height overflow, text height $textHeight px across $lineCount lines, available $height px, policy $policy"
+        is PrimitiveProgramDiagnostic.DynamicTextRequiresRuntimeSafeOverflow ->
+            "$path: dynamic text requires runtime-safe overflow policy, policy $policy"
+        is PrimitiveProgramDiagnostic.UnsupportedTargetOperation ->
+            "$path: target $target does not support $operation"
+        is PrimitiveProgramDiagnostic.UnreachableInputRegion ->
+            "$path: unreachable input region, $reason"
+        is PrimitiveProgramDiagnostic.OverlappingInputRegions ->
+            "$firstPath overlaps $secondPath"
+    }
