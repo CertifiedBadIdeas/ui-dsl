@@ -89,6 +89,12 @@ sealed interface PrimitiveValueExpression {
     data class And(
         val terms: List<PrimitiveValueExpression>,
     ) : PrimitiveValueExpression
+
+    data class Match(
+        val subject: PrimitiveValueExpression,
+        val cases: Map<Any?, PrimitiveValueExpression>,
+        val default: PrimitiveValueExpression,
+    ) : PrimitiveValueExpression
 }
 
 data class PrimitiveRenderInstruction(
@@ -209,4 +215,10 @@ private fun PrimitiveValueExpression?.primitiveDependency(kind: PrimitiveProgram
             } else {
                 kind
             }
+        is PrimitiveValueExpression.Match ->
+            subject.primitiveDependency(kind) +
+                cases.values.fold(PrimitiveProgramDependencies.Static) { acc, expression ->
+                    acc + expression.primitiveDependency(kind)
+                } +
+                default.primitiveDependency(kind)
     }

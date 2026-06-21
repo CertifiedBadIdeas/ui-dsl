@@ -116,6 +116,12 @@ private fun GeneratedValueExpression.toPrimitiveValueExpression(): PrimitiveValu
         is GeneratedValueExpression.Constant -> PrimitiveValueExpression.Constant(value)
         is GeneratedValueExpression.StateField -> PrimitiveValueExpression.StateField(fieldName)
         is GeneratedValueExpression.And -> PrimitiveValueExpression.And(terms.map { it.toPrimitiveValueExpression() })
+        is GeneratedValueExpression.Match ->
+            PrimitiveValueExpression.Match(
+                subject = subject.toPrimitiveValueExpression(),
+                cases = cases.mapValues { (_, value) -> value.toPrimitiveValueExpression() },
+                default = default.toPrimitiveValueExpression(),
+            )
     }
 
 private fun combineVisibility(expressions: List<PrimitiveValueExpression>): PrimitiveValueExpression? =
@@ -134,6 +140,7 @@ private fun combineVisibility(
 private fun PrimitiveValueExpression.flattenAndTerms(): List<PrimitiveValueExpression> =
     when (this) {
         is PrimitiveValueExpression.And -> terms.flatMap { it.flattenAndTerms() }
+        is PrimitiveValueExpression.Match -> listOf(this)
         else -> listOf(this)
     }
 

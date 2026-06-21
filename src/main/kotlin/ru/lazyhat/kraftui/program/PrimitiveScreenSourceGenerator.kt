@@ -232,7 +232,27 @@ private fun PrimitiveValueExpression.kotlinExpression(): String =
         is PrimitiveValueExpression.Constant -> value.kotlinLiteral()
         is PrimitiveValueExpression.StateField -> "state.$fieldName"
         is PrimitiveValueExpression.And -> terms.joinToString(separator = " && ") { "(${it.kotlinExpression()})" }
+        is PrimitiveValueExpression.Match ->
+            booleanMatchExpression(
+                trueExpression = { it.kotlinExpression() },
+                falseExpression = { it.kotlinExpression() },
+            )
+                ?: cases.entries.joinToString(
+                    prefix = "when (${subject.kotlinExpression()}) { ",
+                    postfix = " else -> ${default.kotlinExpression()} }",
+                    separator = "; ",
+                ) { (key, value) -> "${key.kotlinLiteral()} -> ${value.kotlinExpression()}" }
     }
+
+private fun PrimitiveValueExpression.Match.booleanMatchExpression(
+    trueExpression: (PrimitiveValueExpression) -> String,
+    falseExpression: (PrimitiveValueExpression) -> String,
+): String? {
+    val trueCase = cases[true] ?: return null
+    val falseCase = cases[false] ?: return null
+    if (cases.keys.any { it !is Boolean }) return null
+    return "if (${subject.kotlinExpression()}) { ${trueExpression(trueCase)} } else { ${falseExpression(falseCase)} }"
+}
 
 private fun Any?.kotlinLiteral(): String =
     when (this) {
@@ -241,6 +261,7 @@ private fun Any?.kotlinLiteral(): String =
         is Boolean -> toString()
         is Int -> toString()
         is UInt -> "${toString()}u"
+        is Enum<*> -> "${this::class.qualifiedName!!.replace('$', '.')}.${name}"
         is Color -> kotlinLiteral()
         is Position -> "Position($x, $y)"
         else -> error("Cannot generate Kotlin literal for ${this::class.qualifiedName}")

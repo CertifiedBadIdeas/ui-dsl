@@ -133,6 +133,10 @@ private fun PrimitiveValueExpression.resolve(resolve: (PrimitiveValueExpression)
         is PrimitiveValueExpression.Constant -> value
         is PrimitiveValueExpression.StateField -> resolve(this)
         is PrimitiveValueExpression.And -> terms.all { it.resolveAs<Boolean>(resolve) }
+        is PrimitiveValueExpression.Match -> {
+            val subjectValue = subject.resolve(resolve)
+            cases[subjectValue]?.resolve(resolve) ?: default.resolve(resolve)
+        }
     }
 
 private inline fun <reified T> PrimitiveValueExpression.resolveAs(resolve: (PrimitiveValueExpression) -> Any?): T =

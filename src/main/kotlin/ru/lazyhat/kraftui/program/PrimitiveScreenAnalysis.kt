@@ -257,6 +257,16 @@ private fun MutableList<PrimitiveProgramDiagnostic>.analyzeText(
             }
         }
         is PrimitiveValueExpression.And -> Unit
+        is PrimitiveValueExpression.Match -> {
+            if (op.overflow == TextOverflowPolicy.FailInValidation) {
+                add(
+                    PrimitiveProgramDiagnostic.DynamicTextRequiresRuntimeSafeOverflow(
+                        path = path,
+                        policy = op.overflow,
+                    ),
+                )
+            }
+        }
     }
 }
 
@@ -316,6 +326,7 @@ private fun PrimitiveInputInstruction.ClickRegion.staticRect(): PrimitiveRect? {
             is PrimitiveValueExpression.Constant -> origin.value as? Position ?: return null
             is PrimitiveValueExpression.StateField -> return null
             is PrimitiveValueExpression.And -> return null
+            is PrimitiveValueExpression.Match -> return null
         }
     return PrimitiveRect(
         path = path,

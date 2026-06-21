@@ -33,6 +33,12 @@ sealed interface GeneratedValueExpression {
     data class And(
         val terms: List<GeneratedValueExpression>,
     ) : GeneratedValueExpression
+
+    data class Match(
+        val subject: GeneratedValueExpression,
+        val cases: Map<Any?, GeneratedValueExpression>,
+        val default: GeneratedValueExpression,
+    ) : GeneratedValueExpression
 }
 
 interface Value<out T> {
@@ -101,6 +107,33 @@ private class AndValueExpression(
         }
 }
 
+private class MatchValueExpression<K, T>(
+    private val subject: Value<K>,
+    private val cases: Map<K, Value<T>>,
+    private val default: Value<T>,
+) : Value<T> {
+    override val value: T
+        get() = cases[subject.value]?.value ?: default.value
+
+    override val isStatic: Boolean
+        get() = subject.isStatic && cases.values.all { it.isStatic } && default.isStatic
+
+    override val generatedExpression: GeneratedValueExpression?
+        get() {
+            val subjectExpression = subject.generatedExpression ?: return null
+            val generatedCases =
+                cases.entries.associate { (key, value) ->
+                    key as Any? to (value.generatedExpression ?: return null)
+                }
+            val defaultExpression = default.generatedExpression ?: return null
+            return GeneratedValueExpression.Match(
+                subject = subjectExpression,
+                cases = generatedCases,
+                default = defaultExpression,
+            )
+        }
+}
+
 fun <T> value(value: T): Value<T> = ValueConstant(value)
 
 fun <T> value(block: () -> T): Value<T> = ValueExpression(block)
@@ -141,6 +174,15 @@ internal fun andValues(
  *     val cursorVisible = tickValue { it / 6 % 2 == 0 }
  */
 fun <T> tickValue(block: (Int) -> T): Value<T> = TickValueExpression(block)
+
+fun <K, T> matchValue(
+    subject: Value<K>,
+    cases: Map<K, Value<T>>,
+    default: Value<T>,
+): Value<T> {
+    require(cases.isNotEmpty()) { "matchValue must have at least one case" }
+    return MatchValueExpression(subject, cases, default)
+}
 
 /**
  * Holds the current monotonic UI tick. Updated by

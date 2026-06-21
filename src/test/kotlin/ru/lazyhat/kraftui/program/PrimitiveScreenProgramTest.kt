@@ -169,6 +169,10 @@ class PrimitiveScreenProgramTest {
                                     else -> error("Unexpected field ${expression.fieldName}")
                                 }
                             is PrimitiveValueExpression.And -> expression.terms.all { it.resolveTestValue(state) as Boolean }
+                            is PrimitiveValueExpression.Match -> {
+                                val subject = expression.subject.resolveTestValue(state)
+                                (expression.cases[subject] ?: expression.default).resolveTestValue(state)
+                            }
                         }
                     },
                 )
@@ -192,6 +196,10 @@ class PrimitiveScreenProgramTest {
                                     else -> error("Unexpected field ${expression.fieldName}")
                                 }
                             is PrimitiveValueExpression.And -> expression.terms.all { it.resolveTestValue(state) as Boolean }
+                            is PrimitiveValueExpression.Match -> {
+                                val subject = expression.subject.resolveTestValue(state)
+                                (expression.cases[subject] ?: expression.default).resolveTestValue(state)
+                            }
                         }
                     },
                 )
@@ -295,5 +303,9 @@ class PrimitiveScreenProgramTest {
                     else -> error("Unexpected field $fieldName")
                 }
             is PrimitiveValueExpression.And -> terms.all { it.resolveTestValue(state) as Boolean }
+            is PrimitiveValueExpression.Match -> {
+                val subject = subject.resolveTestValue(state)
+                (cases[subject] ?: default).resolveTestValue(state)
+            }
         }
 }

@@ -173,4 +173,5 @@ private fun PrimitiveValueExpression.reportExpression(): String =
         is PrimitiveValueExpression.Constant -> value.toString()
         is PrimitiveValueExpression.StateField -> "state.$fieldName"
         is PrimitiveValueExpression.And -> terms.joinToString(separator = " && ") { "(${it.reportExpression()})" }
+        is PrimitiveValueExpression.Match -> "match(${subject.reportExpression()})"
     }

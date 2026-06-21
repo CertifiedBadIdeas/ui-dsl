@@ -318,6 +318,7 @@ private fun PrimitiveRenderInstruction.optimize(
         null,
         is PrimitiveValueExpression.StateField,
         is PrimitiveValueExpression.And,
+        is PrimitiveValueExpression.Match,
         -> Unit
         is PrimitiveValueExpression.Constant -> Unit
     }
@@ -376,6 +377,7 @@ private fun PrimitiveInputInstruction.ClickRegion.optimize(
         null,
         is PrimitiveValueExpression.StateField,
         is PrimitiveValueExpression.And,
+        is PrimitiveValueExpression.Match,
         -> Unit
         is PrimitiveValueExpression.Constant -> Unit
     }
@@ -588,10 +590,45 @@ private fun List<StaticTextureBakeCandidate>.tryBake(
 }
 
 private fun PrimitiveValueExpression.asConstantColor(): Color? =
-    (this as? PrimitiveValueExpression.Constant)?.value as? Color
+    when (this) {
+        is PrimitiveValueExpression.Constant -> value as? Color
+        is PrimitiveValueExpression.Match -> {
+            val subjectValue = subject.asConstantValue() ?: return null
+            (cases[subjectValue] ?: default).asConstantColor()
+        }
+        is PrimitiveValueExpression.And,
+        is PrimitiveValueExpression.StateField,
+        -> null
+    }
 
 private fun PrimitiveValueExpression?.asConstantPosition(): Position? =
-    (this as? PrimitiveValueExpression.Constant)?.value as? Position
+    when (this) {
+        null -> null
+        is PrimitiveValueExpression.Constant -> value as? Position
+        is PrimitiveValueExpression.Match -> {
+            val subjectValue = subject.asConstantValue() ?: return null
+            (cases[subjectValue] ?: default).asConstantPosition()
+        }
+        is PrimitiveValueExpression.And,
+        is PrimitiveValueExpression.StateField,
+        -> null
+    }
+
+private fun PrimitiveValueExpression.asConstantValue(): Any? =
+    when (this) {
+        is PrimitiveValueExpression.Constant -> value
+        is PrimitiveValueExpression.Match -> {
+            val subjectValue = subject.asConstantValue()
+            (cases[subjectValue] ?: default).asConstantValue()
+        }
+        is PrimitiveValueExpression.And ->
+            if (terms.all { it.asConstantValue() is Boolean }) {
+                terms.all { it.asConstantValue() as Boolean }
+            } else {
+                null
+            }
+        is PrimitiveValueExpression.StateField -> null
+    }
 
 private fun PrimitiveRenderOp.shifted(
     dx: Int,
