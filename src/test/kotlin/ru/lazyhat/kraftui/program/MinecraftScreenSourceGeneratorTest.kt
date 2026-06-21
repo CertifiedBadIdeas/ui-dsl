@@ -57,7 +57,7 @@ class MinecraftScreenSourceGeneratorTest {
                 className = "GeneratedMinecraftScreen",
                 stateType = "ScreenState",
                 actionType = "TestAction",
-            )
+        )
 
         assertEquals("ru.lazyhat.generated", generated.packageName)
         assertEquals("GeneratedMinecraftScreen", generated.className)
