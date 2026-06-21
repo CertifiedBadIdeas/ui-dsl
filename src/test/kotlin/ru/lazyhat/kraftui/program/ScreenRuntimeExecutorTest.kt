@@ -18,6 +18,7 @@ import ru.lazyhat.kraftui.foundation.modifier.width
 import ru.lazyhat.kraftui.foundation.modifier.zIndex
 import ru.lazyhat.kraftui.foundation.tickValue
 import ru.lazyhat.kraftui.foundation.ui
+import ru.lazyhat.kraftui.foundation.uiActions
 import ru.lazyhat.kraftui.foundation.value
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -25,29 +26,32 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class ScreenRuntimeExecutorTest {
+    private sealed interface TestAction {
+        data object Front : TestAction
+        data object Behind : TestAction
+    }
+
     private fun emptySnapshot(): Any = "terminal"
 
     @Test
-    fun mouseClickDispatchesTopmostClickableRegion() {
-        val events = mutableListOf<String>()
+    fun mouseClickReturnsTypedActionFromTopmostClickableRegion() {
         val program =
             ScreenProgramCompiler().compile(
-                ui {
+                uiActions<TestAction> {
                     button(
                         modifier = Modifier.offset(4, 4).size(20, 20).zIndex(0),
-                        onClick = { events += "behind" },
+                        action = TestAction.Behind,
                     ) { text(text = value { "Behind" }) }
                     button(
                         modifier = Modifier.offset(4, 4).size(20, 20).zIndex(1),
-                        onClick = { events += "front" },
+                        action = TestAction.Front,
                     ) { text(text = value { "Front" }) }
                 },
             )
 
         val executor = ScreenRuntimeExecutor(program)
 
-        assertTrue(executor.mouseClicked(8, 8))
-        assertEquals(listOf("front"), events)
+        assertEquals(UiInputResult.Action(TestAction.Front), executor.mouseClicked(8, 8))
     }
 
     @Test
@@ -70,13 +74,13 @@ class ScreenRuntimeExecutorTest {
         assertFalse(executor.keyPressed(257))
 
         // Click inside the terminal region acquires focus.
-        assertTrue(executor.mouseClicked(10, 10))
+        assertTrue(executor.mouseClicked(10, 10).consumed)
         assertTrue(executor.isFocused)
         assertTrue(executor.keyPressed(257))
         assertFalse(executor.keyPressed(258))
 
         // Click outside any region drops focus again.
-        assertFalse(executor.mouseClicked(500, 500))
+        assertFalse(executor.mouseClicked(500, 500).consumed)
         assertFalse(executor.isFocused)
         assertFalse(executor.keyPressed(257))
     }
@@ -120,7 +124,7 @@ class ScreenRuntimeExecutorTest {
         val program =
             ScreenProgramCompiler().compile(
                 ui {
-                    button({}) { text(text = value { "Noop" }) }
+                    button(action = Unit) { text(text = value { "Noop" }) }
                 },
             )
 
@@ -131,52 +135,46 @@ class ScreenRuntimeExecutorTest {
 
     @Test
     fun mouseClickIgnoresAreasOutsideAnyRegion() {
-        val events = mutableListOf<String>()
         val program =
             ScreenProgramCompiler().compile(
                 ui {
                     button(
                         modifier = Modifier.offset(4, 4).size(20, 20),
-                        onClick = { events += "power" },
+                        action = Unit,
                     ) { text(text = value { "Power" }) }
                 },
             )
 
         val executor = ScreenRuntimeExecutor(program)
 
-        assertFalse(executor.mouseClicked(100, 100))
-        assertTrue(events.isEmpty())
+        assertFalse(executor.mouseClicked(100, 100).consumed)
     }
 
     @Test
     fun hiddenIfFrameDoesNotDispatchClicksToRegionsItOwns() {
         var shown = false
-        val events = mutableListOf<String>()
         val program =
             ScreenProgramCompiler().compile(
                 ui(Modifier.size(100, 100)) {
                     If(value { shown }) {
                         button(
                             modifier = Modifier.offset(4, 4).size(20, 20),
-                            onClick = { events += "hit" },
+                            action = Unit,
                         ) { text(text = value { "Hidden" }) }
                     }
                 },
             )
 
         val executor = ScreenRuntimeExecutor(program)
-        assertFalse(executor.mouseClicked(8, 8))
-        assertTrue(events.isEmpty())
+        assertFalse(executor.mouseClicked(8, 8).consumed)
 
         shown = true
-        assertTrue(executor.mouseClicked(8, 8))
-        assertEquals(listOf("hit"), events)
+        assertEquals(UiInputResult.Action(Unit), executor.mouseClicked(8, 8))
     }
 
     @Test
     fun overlayOriginTranslatesClickCoordinates() {
         var anchor = Position(50, 30)
-        val events = mutableListOf<String>()
         val program =
             ScreenProgramCompiler().compile(
                 ui(Modifier.size(200, 200)) {
@@ -186,7 +184,7 @@ class ScreenRuntimeExecutorTest {
                     ) {
                         button(
                             modifier = Modifier.size(20, 20).background(Color.Red),
-                            onClick = { events += "popup" },
+                            action = Unit,
                         ) { text(text = value { "X" }) }
                     }
                 },
@@ -194,15 +192,14 @@ class ScreenRuntimeExecutorTest {
 
         val executor = ScreenRuntimeExecutor(program)
 
-        assertFalse(executor.mouseClicked(0, 0))
-        assertTrue(executor.mouseClicked(55, 35))
-        assertEquals(listOf("popup"), events)
+        assertFalse(executor.mouseClicked(0, 0).consumed)
+        assertEquals(UiInputResult.Action(Unit), executor.mouseClicked(55, 35))
 
         // Move the overlay; the same screen position now misses while the new
         // anchor position hits.
         anchor = Position(100, 100)
-        assertFalse(executor.mouseClicked(55, 35))
-        assertTrue(executor.mouseClicked(105, 105))
+        assertFalse(executor.mouseClicked(55, 35).consumed)
+        assertEquals(UiInputResult.Action(Unit), executor.mouseClicked(105, 105))
     }
 
     @Test
@@ -374,7 +371,7 @@ class ScreenRuntimeExecutorTest {
 
         val executor = ScreenRuntimeExecutor(program)
         assertFalse(executor.isFocused)
-        assertTrue(executor.mouseClicked(10, 10))
+        assertTrue(executor.mouseClicked(10, 10).consumed)
         assertEquals("editor", executor.focusedNodeId)
         assertTrue(executor.keyPressed(65))
         assertEquals(listOf(65), keys)
@@ -521,7 +518,7 @@ class ScreenRuntimeExecutorTest {
         assertFalse(executor.mouseDragged(10, 10))
         assertFalse(executor.mouseReleased(10, 10))
 
-        assertTrue(executor.mouseClicked(5, 5))
+        assertTrue(executor.mouseClicked(5, 5).consumed)
         assertTrue(executor.mouseDragged(7, 8))
         assertTrue(executor.mouseDragged(9, 12))
         assertTrue(executor.mouseReleased(9, 12))

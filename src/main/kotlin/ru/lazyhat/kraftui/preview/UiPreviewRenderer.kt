@@ -15,7 +15,7 @@ data class UiPreviewSpec(
     val id: String,
     val width: Int,
     val height: Int,
-    val root: UiElement,
+    val root: UiElement<*>,
 )
 
 class UiPreviewRenderer(
@@ -74,6 +74,6 @@ class UiPreviewRenderer(
 
     private data class CompiledPreview(
         val image: BufferedImage,
-        val program: ScreenProgram,
+        val program: ScreenProgram<*>,
     )
 }

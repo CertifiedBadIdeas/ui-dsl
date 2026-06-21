@@ -83,7 +83,7 @@ class UiLayoutResolver(
     private val fontMetrics: FontMetrics? = null,
 ) {
     fun resolve(
-        root: UiElement,
+        root: UiElement<*>,
         rootNodeId: String = "root",
         rootX: Int = 0,
         rootY: Int = 0,
@@ -91,7 +91,7 @@ class UiLayoutResolver(
         resolveWithDiagnostics(root, rootNodeId, rootX, rootY).nodes
 
     fun resolveWithDiagnostics(
-        root: UiElement,
+        root: UiElement<*>,
         rootNodeId: String = "root",
         rootX: Int = 0,
         rootY: Int = 0,
@@ -103,7 +103,7 @@ class UiLayoutResolver(
     }
 
     private fun resolveAsFrameRoot(
-        element: UiElement,
+        element: UiElement<*>,
         nodeId: String,
         x: Int,
         y: Int,
@@ -154,7 +154,7 @@ class UiLayoutResolver(
                 )
             }
 
-            is UiElement.Grid -> {
+            is UiElement.Grid<*> -> {
                 resolveGridCells(
                     element,
                     nodeId,
@@ -185,7 +185,7 @@ class UiLayoutResolver(
     }
 
     private fun resolveNode(
-        element: UiElement,
+        element: UiElement<*>,
         nodeId: String,
         parentX: Int,
         parentY: Int,
@@ -252,7 +252,7 @@ class UiLayoutResolver(
                 )
             }
 
-            is UiElement.Grid -> {
+            is UiElement.Grid<*> -> {
                 resolveGridCells(
                     element,
                     nodeId,
@@ -283,7 +283,7 @@ class UiLayoutResolver(
     }
 
     private fun resolveBoxChildren(
-        children: List<UiElement>,
+        children: List<UiElement<*>>,
         nodeId: String,
         x: Int,
         y: Int,
@@ -306,7 +306,7 @@ class UiLayoutResolver(
     }
 
     private fun resolveRowChildren(
-        children: List<UiElement>,
+        children: List<UiElement<*>>,
         nodeId: String,
         x: Int,
         y: Int,
@@ -388,7 +388,7 @@ class UiLayoutResolver(
     }
 
     private fun resolveColumnChildren(
-        children: List<UiElement>,
+        children: List<UiElement<*>>,
         nodeId: String,
         x: Int,
         y: Int,
@@ -470,7 +470,7 @@ class UiLayoutResolver(
     }
 
     private fun resolveGridCells(
-        element: UiElement.Grid,
+        element: UiElement.Grid<*>,
         nodeId: String,
         x: Int,
         y: Int,
@@ -644,7 +644,7 @@ class UiLayoutResolver(
         }
 
     private fun explicitOrIntrinsicWidth(
-        element: UiElement,
+        element: UiElement<*>,
         fallbackWidth: Int,
     ): Int =
         explicitWidth(element, fallbackWidth) ?: when (element) {
@@ -653,7 +653,7 @@ class UiLayoutResolver(
         }
 
     private fun explicitOrIntrinsicHeight(
-        element: UiElement,
+        element: UiElement<*>,
         fallbackHeight: Int,
         width: Int = fallbackHeight,
     ): Int =
@@ -663,7 +663,7 @@ class UiLayoutResolver(
         }
 
     private fun primaryWidthForRow(
-        element: UiElement,
+        element: UiElement<*>,
         parentWidth: Int,
     ): Int =
         explicitWidth(element, parentWidth) ?: when (element) {
@@ -672,7 +672,7 @@ class UiLayoutResolver(
         }
 
     private fun primaryHeightForColumn(
-        element: UiElement,
+        element: UiElement<*>,
         parentHeight: Int,
     ): Int =
         explicitHeight(element, parentHeight) ?: when (element) {
@@ -703,7 +703,7 @@ class UiLayoutResolver(
     }
 
     private fun explicitWidth(
-        element: UiElement,
+        element: UiElement<*>,
         fallbackWidth: Int,
     ): Int? =
         when (val width = element.modifier.findWidth()?.width) {
@@ -713,7 +713,7 @@ class UiLayoutResolver(
         }
 
     private fun explicitHeight(
-        element: UiElement,
+        element: UiElement<*>,
         fallbackHeight: Int,
     ): Int? =
         when (val height = element.modifier.findHeight()?.height) {

@@ -4,45 +4,45 @@ import ru.lazyhat.kraftui.editor.EditorViewModel
 import ru.lazyhat.kraftui.foundation.modifier.Modifier
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.UiAlignment
-import ru.lazyhat.kraftui.foundation.modifier.clickable
 import ru.lazyhat.kraftui.foundation.modifier.focusable
 
-sealed interface UiElement {
+sealed interface UiElement<out Action> {
     val modifier: Modifier
 
-    data class Box(
+    data class Box<Action>(
         override val modifier: Modifier,
-        val children: List<UiElement>,
-    ) : UiElement
+        val children: List<UiElement<Action>>,
+        val clickAction: Value<Action?>? = null,
+    ) : UiElement<Action>
 
-    data class Row(
+    data class Row<Action>(
         override val modifier: Modifier,
-        val children: List<UiElement>,
+        val children: List<UiElement<Action>>,
         val gap: Int = 0,
         val verticalAlignment: UiAlignment? = null,
-    ) : UiElement
+    ) : UiElement<Action>
 
-    data class Column(
+    data class Column<Action>(
         override val modifier: Modifier,
-        val children: List<UiElement>,
+        val children: List<UiElement<Action>>,
         val gap: Int = 0,
         val horizontalAlignment: UiAlignment? = null,
-    ) : UiElement
+    ) : UiElement<Action>
 
-    data class Grid(
+    data class Grid<Action>(
         override val modifier: Modifier,
         val columns: List<GridTrack>,
         val rows: List<GridTrack>,
-        val cells: List<GridCell>,
+        val cells: List<GridCell<Action>>,
         val columnGap: Int = 0,
         val rowGap: Int = 0,
-    ) : UiElement
+    ) : UiElement<Action>
 
     data class Text(
         override val modifier: Modifier,
         val color: Value<Color>,
         val text: Value<String>,
-    ) : UiElement
+    ) : UiElement<Nothing>
 
     data class TerminalSurface(
         override val modifier: Modifier,
@@ -50,7 +50,7 @@ sealed interface UiElement {
         val onKey: (Int) -> Boolean = { false },
         val onKeyReleased: (Int) -> Boolean = { false },
         val onCharTyped: (Char) -> Boolean = { false },
-    ) : UiElement
+    ) : UiElement<Nothing>
 
     /**
      * A fixed-size drawing surface with no children. [onDraw] is invoked each
@@ -62,13 +62,13 @@ sealed interface UiElement {
     data class Canvas(
         override val modifier: Modifier,
         val onDraw: CanvasScope.() -> Unit,
-    ) : UiElement
+    ) : UiElement<Nothing>
 
-    data class IfNode(
+    data class IfNode<Action>(
         override val modifier: Modifier,
         val condition: Value<Boolean>,
-        val children: List<UiElement>,
-    ) : UiElement
+        val children: List<UiElement<Action>>,
+    ) : UiElement<Action>
 
     /**
      * A detached, floating subtree. Its children are laid out inside their own
@@ -78,12 +78,12 @@ sealed interface UiElement {
      *
      * Overlays do not take part in their parent's flow layout.
      */
-    data class Overlay(
+    data class Overlay<Action>(
         override val modifier: Modifier,
         val anchor: Value<Position>?,
         val visible: Value<Boolean>?,
-        val children: List<UiElement>,
-    ) : UiElement
+        val children: List<UiElement<Action>>,
+    ) : UiElement<Action>
 
     /**
      * A clipped, scrollable container. Children are laid out as if the area
@@ -99,13 +99,13 @@ sealed interface UiElement {
      * [onScroll] receives the wheel delta when the cursor is inside the
      * viewport. Returning `true` consumes the event.
      */
-    data class ScrollArea(
+    data class ScrollArea<Action>(
         override val modifier: Modifier,
         val scrollX: Value<Int>,
         val scrollY: Value<Int>,
         val onScroll: (Double) -> Boolean = { false },
-        val children: List<UiElement>,
-    ) : UiElement
+        val children: List<UiElement<Action>>,
+    ) : UiElement<Action>
 
     /**
      * A first-class code editor element. The editor reads its visible state
@@ -124,7 +124,7 @@ sealed interface UiElement {
         val viewModel: Value<EditorViewModel>,
         val fontWidth: Int,
         val fontHeight: Int,
-    ) : UiElement
+    ) : UiElement<Nothing>
 }
 
 sealed interface GridTrack
@@ -145,12 +145,12 @@ data class WeightedGridTrack(
     }
 }
 
-data class GridCell(
+data class GridCell<Action>(
     val column: Int,
     val row: Int,
     val columnSpan: Int,
     val rowSpan: Int,
-    val children: List<UiElement>,
+    val children: List<UiElement<Action>>,
 ) {
     init {
         require(column >= 0) { "grid cell column must be non-negative" }
@@ -160,15 +160,15 @@ data class GridCell(
     }
 }
 
-class GridScope {
-    private val cells = mutableListOf<GridCell>()
+class GridScope<Action> {
+    private val cells = mutableListOf<GridCell<Action>>()
 
     fun cell(
         column: Int,
         row: Int,
         columnSpan: Int = 1,
         rowSpan: Int = 1,
-        block: UiScope.() -> Unit,
+        block: UiScope<Action>.() -> Unit,
     ) {
         cells +=
             GridCell(
@@ -176,41 +176,41 @@ class GridScope {
                 row = row,
                 columnSpan = columnSpan,
                 rowSpan = rowSpan,
-                children = UiScope().apply(block).build(),
+                children = UiScope<Action>().apply(block).build(),
             )
     }
 
-    fun build(): List<GridCell> = cells
+    fun build(): List<GridCell<Action>> = cells
 }
 
-class UiScope {
-    private val children = mutableListOf<UiElement>()
+class UiScope<Action> {
+    private val children = mutableListOf<UiElement<Action>>()
 
     fun box(
         modifier: Modifier = Modifier,
-        block: UiScope.() -> Unit = {},
+        block: UiScope<Action>.() -> Unit = {},
     ) {
-        children += UiElement.Box(modifier, UiScope().apply(block).build())
+        children += UiElement.Box(modifier, UiScope<Action>().apply(block).build())
     }
 
     fun row(
         modifier: Modifier = Modifier,
         gap: Int = 0,
         verticalAlignment: UiAlignment? = null,
-        block: UiScope.() -> Unit,
+        block: UiScope<Action>.() -> Unit,
     ) {
         require(gap >= 0)
-        children += UiElement.Row(modifier, UiScope().apply(block).build(), gap, verticalAlignment)
+        children += UiElement.Row(modifier, UiScope<Action>().apply(block).build(), gap, verticalAlignment)
     }
 
     fun column(
         modifier: Modifier = Modifier,
         gap: Int = 0,
         horizontalAlignment: UiAlignment? = null,
-        block: UiScope.() -> Unit,
+        block: UiScope<Action>.() -> Unit,
     ) {
         require(gap >= 0)
-        children += UiElement.Column(modifier, UiScope().apply(block).build(), gap, horizontalAlignment)
+        children += UiElement.Column(modifier, UiScope<Action>().apply(block).build(), gap, horizontalAlignment)
     }
 
     fun grid(
@@ -219,7 +219,7 @@ class UiScope {
         rows: List<GridTrack>,
         columnGap: Int = 0,
         rowGap: Int = 0,
-        block: GridScope.() -> Unit,
+        block: GridScope<Action>.() -> Unit,
     ) {
         require(columns.isNotEmpty()) { "grid must have at least one column" }
         require(rows.isNotEmpty()) { "grid must have at least one row" }
@@ -230,25 +230,33 @@ class UiScope {
                 modifier = modifier,
                 columns = columns,
                 rows = rows,
-                cells = GridScope().apply(block).build(),
+                cells = GridScope<Action>().apply(block).build(),
                 columnGap = columnGap,
                 rowGap = rowGap,
             )
     }
 
     fun button(
-        onClick: () -> Unit,
-        block: UiScope.() -> Unit,
+        action: Action,
+        block: UiScope<Action>.() -> Unit,
     ) {
-        button(Modifier, onClick, block)
+        button(Modifier, action, block)
     }
 
     fun button(
         modifier: Modifier = Modifier,
-        onClick: () -> Unit,
-        block: UiScope.() -> Unit,
+        action: Action,
+        block: UiScope<Action>.() -> Unit,
     ) {
-        box(modifier.clickable(onClick), block)
+        button(modifier, value { action }, block)
+    }
+
+    fun button(
+        modifier: Modifier = Modifier,
+        action: Value<Action?>,
+        block: UiScope<Action>.() -> Unit,
+    ) {
+        children += UiElement.Box(modifier, UiScope<Action>().apply(block).build(), clickAction = action)
     }
 
     fun text(
@@ -337,23 +345,23 @@ class UiScope {
     @Suppress("FunctionName")
     fun If(
         condition: Value<Boolean>,
-        block: UiScope.() -> Unit,
+        block: UiScope<Action>.() -> Unit,
     ) {
-        children += UiElement.IfNode(modifier = Modifier, condition = condition, children = UiScope().apply(block).build())
+        children += UiElement.IfNode(modifier = Modifier, condition = condition, children = UiScope<Action>().apply(block).build())
     }
 
     fun overlay(
         modifier: Modifier = Modifier,
         anchor: Value<Position>? = null,
         visible: Value<Boolean>? = null,
-        block: UiScope.() -> Unit,
+        block: UiScope<Action>.() -> Unit,
     ) {
         children +=
             UiElement.Overlay(
                 modifier = modifier,
                 anchor = anchor,
                 visible = visible,
-                children = UiScope().apply(block).build(),
+                children = UiScope<Action>().apply(block).build(),
             )
     }
 
@@ -362,7 +370,7 @@ class UiScope {
         scrollX: Value<Int> = value { 0 },
         scrollY: Value<Int> = value { 0 },
         onScroll: (Double) -> Boolean = { false },
-        block: UiScope.() -> Unit,
+        block: UiScope<Action>.() -> Unit,
     ) {
         children +=
             UiElement.ScrollArea(
@@ -370,7 +378,7 @@ class UiScope {
                 scrollX = scrollX,
                 scrollY = scrollY,
                 onScroll = onScroll,
-                children = UiScope().apply(block).build(),
+                children = UiScope<Action>().apply(block).build(),
             )
     }
 
@@ -389,14 +397,20 @@ class UiScope {
             )
     }
 
-    fun build(): List<UiElement> = children
+    fun build(): List<UiElement<Action>> = children
 }
 
 fun ui(
     modifier: Modifier = Modifier,
-    block: UiScope.() -> Unit,
-): UiElement =
+    block: UiScope<Unit>.() -> Unit,
+): UiElement<Unit> =
+    uiActions(modifier, block)
+
+fun <Action> uiActions(
+    modifier: Modifier = Modifier,
+    block: UiScope<Action>.() -> Unit,
+): UiElement<Action> =
     UiElement.Box(
         modifier = modifier,
-        children = UiScope().apply(block).build(),
+        children = UiScope<Action>().apply(block).build(),
     )

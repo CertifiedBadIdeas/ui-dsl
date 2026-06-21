@@ -24,9 +24,9 @@ import ru.lazyhat.kraftui.text.TextFlow
  * expected to be recompiled only when the structural input changes (e.g. the
  * screen's root size).
  */
-data class ScreenProgram(
+data class ScreenProgram<Action>(
     val frames: List<RenderFrame>,
-    val hitRegions: List<HitRegion>,
+    val hitRegions: List<HitRegion<Action>>,
     val hoverRegions: List<HoverRegion> = emptyList(),
     val tooltipRegions: List<TooltipRegion> = emptyList(),
     val focusNodes: List<FocusNode> = emptyList(),
@@ -231,7 +231,7 @@ sealed interface RenderOp {
  *
  * Coordinates are baked relative to the parent frame's origin.
  */
-data class HitRegion(
+data class HitRegion<out Action>(
     val nodeId: String,
     val frameIndex: Int,
     val x: Int,
@@ -239,7 +239,7 @@ data class HitRegion(
     val width: Int,
     val height: Int,
     val zIndex: Int,
-    val onClick: () -> Unit,
+    val action: Value<Action?>? = null,
     val onClickAt: ((x: Int, y: Int) -> Unit)? = null,
     val clip: HitClip? = null,
     val onDragStart: ((x: Int, y: Int) -> Unit)? = null,

@@ -23,8 +23,26 @@ import ru.lazyhat.kraftui.text.TextLayouter
  *
  * No allocations, no map lookups, no recursion.
  */
-class ScreenRuntimeExecutor(
-    private val program: ScreenProgram,
+sealed interface UiInputResult<out Action> {
+    val consumed: Boolean
+
+    data object Ignored : UiInputResult<Nothing> {
+        override val consumed: Boolean = false
+    }
+
+    data object Consumed : UiInputResult<Nothing> {
+        override val consumed: Boolean = true
+    }
+
+    data class Action<out Action>(
+        val action: Action,
+    ) : UiInputResult<Action> {
+        override val consumed: Boolean = true
+    }
+}
+
+class ScreenRuntimeExecutor<Action>(
+    private val program: ScreenProgram<Action>,
 ) {
     /**
      * Identifier of the focus node that currently owns keyboard focus, or
@@ -93,7 +111,7 @@ class ScreenRuntimeExecutor(
      * The hit region currently being dragged, set by [mouseClicked] when the
      * pressed region carries any drag handler and cleared by [mouseReleased].
      */
-    private var activeDragRegion: HitRegion? = null
+    private var activeDragRegion: HitRegion<Action>? = null
 
     /**
      * Updates every [ru.lazyhat.kraftui.foundation.HoverState]
@@ -253,7 +271,7 @@ class ScreenRuntimeExecutor(
     fun mouseClicked(
         x: Int,
         y: Int,
-    ): Boolean {
+    ): UiInputResult<Action> {
         for (region in program.hitRegions) {
             val frame = program.frames[region.frameIndex]
             if (frame.visible != null && !frame.visible.value) continue
@@ -272,25 +290,25 @@ class ScreenRuntimeExecutor(
                     val cy = clip.y + clipOrigin.y
                     if (x < cx || y < cy || x >= cx + clip.width || y >= cy + clip.height) continue
                 }
-                // Update focus *before* running the click handler. The
-                // handler may synchronously mutate state that triggers a
+                // Update focus *before* returning the action. The host may
+                // synchronously mutate state that triggers a
                 // host-side `invalidate()` (e.g. via a StateFlow collector
                 // dispatched on the main thread), which captures
                 // `focusedNodeId` for restoration on the next rebuild. If
-                // we set focus *after* `onClick`, that capture would see the
+                // we set focus after returning, that capture would see the
                 // stale (pre-click) focus and the new focus assignment would
                 // land on an executor instance that is about to be discarded
                 // — typing right after the click would then have no effect.
                 program.focusNodes
                     .firstOrNull { it.nodeId == region.nodeId }
                     ?.let { focusedNodeId = it.nodeId }
-                region.onClick.invoke()
                 region.onClickAt?.invoke(x - rx, y - ry)
                 if (region.onDragStart != null || region.onDrag != null || region.onDragEnd != null) {
                     activeDragRegion = region
                     region.onDragStart?.invoke(x, y)
                 }
-                return true
+                val action = region.action?.value
+                return if (action != null) UiInputResult.Action(action) else UiInputResult.Consumed
             }
         }
 
@@ -302,11 +320,11 @@ class ScreenRuntimeExecutor(
             val fy = focus.y + origin.y
             if (x >= fx && y >= fy && x < fx + focus.width && y < fy + focus.height) {
                 focusedNodeId = focus.nodeId
-                return true
+                return UiInputResult.Consumed
             }
         }
         focusedNodeId = null
-        return false
+        return UiInputResult.Ignored
     }
 
     fun mouseDragged(

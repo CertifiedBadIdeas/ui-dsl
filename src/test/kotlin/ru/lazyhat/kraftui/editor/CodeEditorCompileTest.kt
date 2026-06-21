@@ -110,7 +110,7 @@ class CodeEditorCompileTest {
         val executor = ScreenRuntimeExecutor(program)
 
         // Click inside grants focus to the editor.
-        assertTrue(executor.mouseClicked(5, 5))
+        assertTrue(executor.mouseClicked(5, 5).consumed)
 
         executor.keyPressed(257)
         executor.charTyped('a')
@@ -138,7 +138,7 @@ class CodeEditorCompileTest {
         // Gutter for two-line buffer = (1 digit + 1 padding) * 6 = 12 px.
         // localY = 12 → line = 0 + (12 / 9) = 1.
         // localX = 12 + 3 * 6 = 30 → column = 3.
-        assertTrue(executor.mouseClicked(30, 12))
+        assertTrue(executor.mouseClicked(30, 12).consumed)
         assertEquals(1 to 3, vm.clickEvents.last())
     }
 

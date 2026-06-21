@@ -5,7 +5,6 @@ import ru.lazyhat.kraftui.foundation.Value
 import ru.lazyhat.kraftui.foundation.modifier.TextAlignment
 import ru.lazyhat.kraftui.foundation.modifier.Position
 import ru.lazyhat.kraftui.foundation.modifier.findBackground
-import ru.lazyhat.kraftui.foundation.modifier.findClickable
 import ru.lazyhat.kraftui.foundation.modifier.findDraggable
 import ru.lazyhat.kraftui.foundation.modifier.findFocusable
 import ru.lazyhat.kraftui.foundation.modifier.findHoverable
@@ -26,8 +25,8 @@ import ru.lazyhat.kraftui.text.TextLayouter
  *
  *  - a flat list of [RenderFrame]s, each with baked relative coordinates
  *    and optional dynamic `origin`/`visible` expressions;
- *  - a flat list of [HitRegion]s, sorted by descending z-index, with their
- *    `onClick` handlers bound directly (no string-keyed indirection);
+ *  - a flat list of [HitRegion]s, sorted by descending z-index, with typed
+ *    actions baked into click regions;
  *  - at most one focused node plus its `onKey` handler.
  *
  * The result is designed to be rebuilt only on structural changes (screen
@@ -37,16 +36,16 @@ import ru.lazyhat.kraftui.text.TextLayouter
 class ScreenProgramCompiler(
     private val fontMetrics: FontMetrics? = null,
 ) {
-    fun compile(
-        root: UiElement,
+    fun <Action> compile(
+        root: UiElement<Action>,
         rootX: Int = 0,
         rootY: Int = 0,
         rootWidth: Int = 0,
         rootHeight: Int = 0,
-    ): ScreenProgram {
+    ): ScreenProgram<Action> {
         val frames = mutableListOf<MutableList<RenderOp>>()
         val descriptors = mutableListOf<FrameDescriptor>()
-        val hitRegions = mutableListOf<HitRegion>()
+        val hitRegions = mutableListOf<HitRegion<Action>>()
         val hoverRegions = mutableListOf<HoverRegion>()
         val tooltipRegions = mutableListOf<TooltipRegion>()
         val focusNodes = mutableListOf<FocusNode>()
@@ -97,12 +96,12 @@ class ScreenProgramCompiler(
         )
     }
 
-    private fun lower(
-        element: UiElement,
+    private fun <Action> lower(
+        element: UiElement<Action>,
         nodeId: String,
         layout: Map<String, LayoutNode>,
         ops: MutableList<RenderOp>,
-        hitRegions: MutableList<HitRegion>,
+        hitRegions: MutableList<HitRegion<Action>>,
         hoverRegions: MutableList<HoverRegion>,
         tooltipRegions: MutableList<TooltipRegion>,
         frames: MutableList<MutableList<RenderOp>>,
@@ -179,9 +178,8 @@ class ScreenProgramCompiler(
                 element.modifier.findBackground()?.let { bg ->
                     ops += RenderOp.FillRect(node.x, node.y, node.width, node.height, bg.color)
                 }
-                val clickable = element.modifier.findClickable()
                 val draggable = element.modifier.findDraggable()
-                if (clickable != null || draggable != null) {
+                if (element.clickAction != null || draggable != null) {
                     hitRegions +=
                         HitRegion(
                             nodeId = nodeId,
@@ -191,7 +189,7 @@ class ScreenProgramCompiler(
                             width = node.width,
                             height = node.height,
                             zIndex = element.modifier.findZIndex()?.zIndex ?: 0,
-                            onClick = clickable?.onClick ?: {},
+                            action = element.clickAction,
                             onDragStart = draggable?.onDragStart,
                             onDrag = draggable?.onDrag,
                             onDragEnd = draggable?.onDragEnd,
@@ -422,11 +420,11 @@ class ScreenProgramCompiler(
         }
     }
 
-    private fun lowerOverlay(
-        element: UiElement.Overlay,
+    private fun <Action> lowerOverlay(
+        element: UiElement.Overlay<Action>,
         nodeId: String,
         parentLayout: Map<String, LayoutNode>,
-        hitRegions: MutableList<HitRegion>,
+        hitRegions: MutableList<HitRegion<Action>>,
         hoverRegions: MutableList<HoverRegion>,
         tooltipRegions: MutableList<TooltipRegion>,
         frames: MutableList<MutableList<RenderOp>>,
@@ -473,12 +471,12 @@ class ScreenProgramCompiler(
         val visible: Value<Boolean>?,
     )
 
-    private fun lowerScrollArea(
-        element: UiElement.ScrollArea,
+    private fun <Action> lowerScrollArea(
+        element: UiElement.ScrollArea<Action>,
         nodeId: String,
         outer: LayoutNode,
         parentOps: MutableList<RenderOp>,
-        hitRegions: MutableList<HitRegion>,
+        hitRegions: MutableList<HitRegion<Action>>,
         hoverRegions: MutableList<HoverRegion>,
         tooltipRegions: MutableList<TooltipRegion>,
         frames: MutableList<MutableList<RenderOp>>,
@@ -565,13 +563,13 @@ class ScreenProgramCompiler(
         parentOps += RenderOp.PopClip
     }
 
-    private fun lowerCodeEditor(
+    private fun <Action> lowerCodeEditor(
         element: UiElement.CodeEditor,
         nodeId: String,
         node: LayoutNode,
         frameIndex: Int,
         ops: MutableList<RenderOp>,
-        hitRegions: MutableList<HitRegion>,
+        hitRegions: MutableList<HitRegion<Action>>,
         focusNodes: MutableList<FocusNode>,
         scrollRegions: MutableList<ScrollRegion>,
     ) {
@@ -614,10 +612,6 @@ class ScreenProgramCompiler(
 
         // Hit region: a click translates pixel coordinates to (line, column),
         // forwards to the view-model and lets the executor focus this node.
-        // The hit-region's onClick receives no coordinates, so the runtime
-        // executor calls the view-model directly via mouseClicked routing.
-        // Until that routing is wired up, we forward a "best effort" click
-        // pinning at (scrollLine, 0) so focusing alone works correctly.
         hitRegions +=
             HitRegion(
                 nodeId = nodeId,
@@ -627,10 +621,6 @@ class ScreenProgramCompiler(
                 width = width,
                 height = height,
                 zIndex = element.modifier.findZIndex()?.zIndex ?: 0,
-                onClick = {
-                    val vm = viewModel.value
-                    vm.onMouseClickAt(vm.scrollLine, 0)
-                },
                 onClickAt = { localX, localY ->
                     val vm = viewModel.value
                     val gutter =

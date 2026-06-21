@@ -59,7 +59,7 @@ class ScreenProgramCompilerTest {
         val program =
             ScreenProgramCompiler().compile(
                 ui {
-                    button({}) { text(text = value { "Click" }) }
+                    button(action = Unit) { text(text = value { "Click" }) }
                 },
             )
 
@@ -178,21 +178,16 @@ class ScreenProgramCompilerTest {
     }
 
     @Test
-    fun buttonClickIsBakedIntoHitRegion() {
-        var pressed = false
+    fun buttonActionIsBakedIntoHitRegion() {
         val program =
             ScreenProgramCompiler().compile(
                 ui {
-                    button(onClick = { pressed = true }) { text(text = value { "Power" }) }
+                    button(action = Unit) { text(text = value { "Power" }) }
                 },
             )
 
         assertEquals(1, program.hitRegions.size)
-        program.hitRegions
-            .single()
-            .onClick
-            .invoke()
-        assertTrue(pressed)
+        assertEquals(Unit, program.hitRegions.single().action?.value)
     }
 
     @Test
@@ -207,7 +202,7 @@ class ScreenProgramCompilerTest {
                                     .size(80, 20)
                                     .align(UiAlignment.Center)
                                     .background(Color.Red),
-                            onClick = {},
+                            action = Unit,
                         ) { text(text = value { "Centered" }) }
                     }
                 },
@@ -590,7 +585,7 @@ class ScreenProgramCompilerTest {
                     ) {
                         button(
                             modifier = Modifier.offset(0, 100).size(50, 20),
-                            onClick = {},
+                            action = Unit,
                         ) {}
                     }
                 },

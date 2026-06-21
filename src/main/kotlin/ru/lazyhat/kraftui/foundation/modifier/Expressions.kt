@@ -188,17 +188,6 @@ fun Modifier.findBackground() = find<BackgroundModifier>()
 //
 //
 
-data class ClickableModifier(
-    val onClick: () -> Unit,
-) : Modifier.Element
-
-fun Modifier.clickable(onClick: () -> Unit) = then(ClickableModifier(onClick))
-
-fun Modifier.findClickable() = find<ClickableModifier>()
-
-//
-//
-
 data class ZIndexModifier(
     val zIndex: Int,
 ) : Modifier.Element
