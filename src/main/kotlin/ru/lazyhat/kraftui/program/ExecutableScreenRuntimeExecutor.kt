@@ -180,6 +180,10 @@ class ExecutableScreenRuntimeExecutor<Action>(
                 backend.drawTerminalSurface(op.x + ox, op.y + oy, op.snapshot.value)
             }
 
+            is RenderOp.DrawTextureRegion -> {
+                backend.drawTextureRegion(op.x + ox, op.y + oy, op.width, op.height, op.region, op.scaling)
+            }
+
             is RenderOp.DrawCanvas -> {
                 canvasScope.bind(backend, op.x + ox, op.y + oy, op.width, op.height)
                 op.onDraw.invoke(canvasScope)
@@ -418,6 +422,19 @@ class ExecutableScreenRuntimeExecutor<Action>(
             }
         }
 
+        data class DrawTextureRegion(
+            val x: Int,
+            val y: Int,
+            val width: Int,
+            val height: Int,
+            val region: PrimitiveTextureRegion,
+            val scaling: PrimitiveTextureScaling,
+        ) : CachedRenderCommand {
+            override fun replay(backend: RenderBackend) {
+                backend.drawTextureRegion(x, y, width, height, region, scaling)
+            }
+        }
+
         data class PushClip(
             val x: Int,
             val y: Int,
@@ -466,6 +483,17 @@ class ExecutableScreenRuntimeExecutor<Action>(
             snapshot: Any,
         ) {
             commands += CachedRenderCommand.DrawTerminalSurface(x, y, snapshot)
+        }
+
+        override fun drawTextureRegion(
+            x: Int,
+            y: Int,
+            width: Int,
+            height: Int,
+            region: PrimitiveTextureRegion,
+            scaling: PrimitiveTextureScaling,
+        ) {
+            commands += CachedRenderCommand.DrawTextureRegion(x, y, width, height, region, scaling)
         }
 
         override fun pushClip(

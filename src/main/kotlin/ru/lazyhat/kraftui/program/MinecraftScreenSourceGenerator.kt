@@ -34,7 +34,7 @@ fun PrimitiveScreenProgram.generateMinecraftScreenSource(
                     add("net.minecraft.client.Minecraft")
                     add("net.minecraft.client.gui.Font")
                     add("net.minecraft.client.gui.GuiGraphics")
-                    if (bakedTextures.isNotEmpty()) {
+                    if (bakedTextures.isNotEmpty() || renderInstructions.externalTextureRegions().isNotEmpty()) {
                         add("net.minecraft.resources.ResourceLocation")
                     }
                 },
@@ -94,6 +94,7 @@ private fun PrimitiveScreenProgram.minecraftClassMembers(
         val cacheTextLayout = optimization.enables(PrimitiveOptimizationPass.TextLayoutCaching)
         val precomputeHitRegions = optimization.enables(PrimitiveOptimizationPass.HitRegionPrecompute)
         val groupVisibilityBlocks = optimization.enables(PrimitiveOptimizationPass.VisibilityBlockGrouping)
+        val usesTextureRegions = program.renderInstructions.externalTextureRegions().isNotEmpty()
         add(
             KotlinPropertyDeclaration(
                 name = "clipStack",
@@ -112,6 +113,15 @@ private fun PrimitiveScreenProgram.minecraftClassMembers(
                 KotlinPropertyDeclaration(
                     name = "${texture.id.kotlinIdentifier()}ResourceName",
                     initializer = texture.minecraftResourceLocationExpression(optimization),
+                    modifiers = listOf("private"),
+                ),
+            )
+        }
+        program.renderInstructions.externalTextureRegions().forEach { region ->
+            add(
+                KotlinPropertyDeclaration(
+                    name = "${region.resourceKey.kotlinIdentifier()}ResourceName",
+                    initializer = "ResourceLocation.fromNamespaceAndPath(\"${region.namespace}\", \"${region.path}\")",
                     modifiers = listOf("private"),
                 ),
             )
@@ -186,7 +196,7 @@ private fun PrimitiveScreenProgram.minecraftClassMembers(
         if (precomputeHitRegions) {
             program.inputInstructions.minecraftInputHelpersMember(stateType, actionType)?.let(::add)
         }
-        add(minecraftHelpersMember(cacheTextLayout))
+        add(minecraftHelpersMember(cacheTextLayout, usesTextureRegions))
     }
 
 private fun minecraftTextLayoutCacheMember(): KotlinClassMember =
@@ -313,8 +323,18 @@ private fun PrimitiveRenderOp.minecraftRenderStatements(
                     "graphics.blit(${textureId.kotlinIdentifier()}ResourceName, $x$ox, $y$oy, 0.0f, 0.0f, $width, $height, $width, $height)",
                 ),
             )
+        is PrimitiveRenderOp.DrawTextureRegion ->
+            listOf(
+                KotlinStatement.Expression(
+                    "drawTextureRegion(graphics, ${region.resourceKey.kotlinIdentifier()}ResourceName, $x$ox, $y$oy, $width, $height, ${region.sourceX}, ${region.sourceY}, ${region.sourceWidth}, ${region.sourceHeight}, ${region.atlasWidth}, ${region.atlasHeight}, tile = ${scaling == PrimitiveTextureScaling.Tile})",
+                ),
+            )
     }
 }
+
+private fun List<PrimitiveRenderInstruction>.externalTextureRegions(): List<PrimitiveTextureRegion> =
+    mapNotNull { (it.op as? PrimitiveRenderOp.DrawTextureRegion)?.region }
+        .distinctBy { it.resourceKey }
 
 private fun PrimitiveRenderOp.DrawText.minecraftDrawTextStatements(
     index: Int,
@@ -460,15 +480,21 @@ private fun StringBuilder.appendMinecraftInputHelpers(
     appendLine("        }")
 }
 
-private fun minecraftHelpersMember(cacheTextLayout: Boolean): KotlinClassMember =
+private fun minecraftHelpersMember(
+    cacheTextLayout: Boolean,
+    usesTextureRegions: Boolean,
+): KotlinClassMember =
     KotlinRawClassMember(
         lines =
             buildString {
-                appendMinecraftHelpers(cacheTextLayout)
+                appendMinecraftHelpers(cacheTextLayout, usesTextureRegions)
             }.toClassMemberLines(),
     )
 
-private fun StringBuilder.appendMinecraftHelpers(cacheTextLayout: Boolean) {
+private fun StringBuilder.appendMinecraftHelpers(
+    cacheTextLayout: Boolean,
+    usesTextureRegions: Boolean,
+) {
     appendLine()
     appendLine("    private fun drawText(")
     appendLine("        graphics: GuiGraphics,")
@@ -517,6 +543,41 @@ private fun StringBuilder.appendMinecraftHelpers(cacheTextLayout: Boolean) {
     appendLine("            popClip(graphics)")
     appendLine("        }")
     appendLine("    }")
+    if (usesTextureRegions) {
+        appendLine()
+        appendLine("    private fun drawTextureRegion(")
+        appendLine("        graphics: GuiGraphics,")
+        appendLine("        texture: ResourceLocation,")
+        appendLine("        x: Int,")
+        appendLine("        y: Int,")
+        appendLine("        width: Int,")
+        appendLine("        height: Int,")
+        appendLine("        sourceX: Int,")
+        appendLine("        sourceY: Int,")
+        appendLine("        sourceWidth: Int,")
+        appendLine("        sourceHeight: Int,")
+        appendLine("        atlasWidth: Int,")
+        appendLine("        atlasHeight: Int,")
+        appendLine("        tile: Boolean,")
+        appendLine("    ) {")
+        appendLine("        if (width <= 0 || height <= 0) return")
+        appendLine("        if (!tile) {")
+        appendLine("            graphics.blit(texture, x, y, sourceX.toFloat(), sourceY.toFloat(), width, height, atlasWidth, atlasHeight)")
+        appendLine("            return")
+        appendLine("        }")
+        appendLine("        var dx = 0")
+        appendLine("        while (dx < width) {")
+        appendLine("            val tileWidth = minOf(sourceWidth, width - dx)")
+        appendLine("            var dy = 0")
+        appendLine("            while (dy < height) {")
+        appendLine("                val tileHeight = minOf(sourceHeight, height - dy)")
+        appendLine("                graphics.blit(texture, x + dx, y + dy, sourceX.toFloat(), sourceY.toFloat(), tileWidth, tileHeight, atlasWidth, atlasHeight)")
+        appendLine("                dy += tileHeight")
+        appendLine("            }")
+        appendLine("            dx += tileWidth")
+        appendLine("        }")
+        appendLine("    }")
+    }
     appendLine()
     appendLine("    private fun buildFinalTextLines(")
     appendLine("        font: Font,")

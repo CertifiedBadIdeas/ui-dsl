@@ -20,6 +20,7 @@ data class UiPreviewSpec(
 
 class UiPreviewRenderer(
     private val font: PreviewFont,
+    private val textureResolver: PreviewTextureResolver = MissingPreviewTextureResolver,
 ) {
     fun render(spec: UiPreviewSpec): BufferedImage {
         require(spec.width > 0) { "UI preview width must be positive: ${spec.id}" }
@@ -34,7 +35,7 @@ class UiPreviewRenderer(
 
     private fun renderCompiled(spec: UiPreviewSpec): CompiledPreview {
         val image = BufferedImage(spec.width, spec.height, BufferedImage.TYPE_INT_ARGB)
-        val backend = ImageRenderBackend(image, font)
+        val backend = ImageRenderBackend(image, font, textureResolver = textureResolver)
         val program =
             ScreenProgramCompiler(fontMetrics = FontMetrics { text -> font.width(text) })
                 .compile(

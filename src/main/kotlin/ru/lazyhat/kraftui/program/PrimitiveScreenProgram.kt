@@ -42,6 +42,39 @@ data class PrimitiveBakedTexture(
     }
 }
 
+data class PrimitiveTextureRegion(
+    val namespace: String,
+    val path: String,
+    val atlasWidth: Int,
+    val atlasHeight: Int,
+    val sourceX: Int,
+    val sourceY: Int,
+    val sourceWidth: Int,
+    val sourceHeight: Int,
+) {
+    val resourceKey: String
+        get() = "$namespace:$path"
+
+    init {
+        require(namespace.isNotBlank()) { "texture namespace must not be blank" }
+        require(path.isNotBlank()) { "texture path must not be blank" }
+        require(!path.startsWith('/')) { "texture path must be relative" }
+        require(atlasWidth > 0) { "texture atlas width must be positive" }
+        require(atlasHeight > 0) { "texture atlas height must be positive" }
+        require(sourceX >= 0) { "texture sourceX must be non-negative" }
+        require(sourceY >= 0) { "texture sourceY must be non-negative" }
+        require(sourceWidth > 0) { "texture sourceWidth must be positive" }
+        require(sourceHeight > 0) { "texture sourceHeight must be positive" }
+        require(sourceX + sourceWidth <= atlasWidth) { "texture source region must fit atlas width" }
+        require(sourceY + sourceHeight <= atlasHeight) { "texture source region must fit atlas height" }
+    }
+}
+
+enum class PrimitiveTextureScaling {
+    Stretch,
+    Tile,
+}
+
 val PrimitiveScreenProgram.dependencies: PrimitiveProgramDependencies
     get() =
         renderInstructions.fold(PrimitiveProgramDependencies.Static) { acc, instruction ->
@@ -165,6 +198,15 @@ sealed interface PrimitiveRenderOp {
         val height: Int,
         val textureId: String,
     ) : PrimitiveRenderOp
+
+    data class DrawTextureRegion(
+        val x: Int,
+        val y: Int,
+        val width: Int,
+        val height: Int,
+        val region: PrimitiveTextureRegion,
+        val scaling: PrimitiveTextureScaling = PrimitiveTextureScaling.Stretch,
+    ) : PrimitiveRenderOp
 }
 
 val PrimitiveRenderOp.dependencies: PrimitiveProgramDependencies
@@ -179,6 +221,7 @@ val PrimitiveRenderOp.dependencies: PrimitiveProgramDependencies
             PrimitiveRenderOp.PopClip -> PrimitiveProgramDependencies.Static
             is PrimitiveRenderOp.DrawCodeEditor -> viewModel.primitiveDependency(PrimitiveProgramDependencies.DynamicValue)
             is PrimitiveRenderOp.DrawBakedTexture -> PrimitiveProgramDependencies.Static
+            is PrimitiveRenderOp.DrawTextureRegion -> PrimitiveProgramDependencies.Static
         }
 
 sealed interface PrimitiveInputInstruction {

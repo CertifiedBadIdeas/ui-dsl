@@ -52,25 +52,18 @@ enum class BakeHint {
     KeepPrimitiveCommands,
 }
 
+typealias TextureAtlas = ru.lazyhat.kraftui.foundation.TextureAtlas
+typealias TextureRegion = ru.lazyhat.kraftui.foundation.TextureRegion
+typealias TextureInsets = ru.lazyhat.kraftui.foundation.TextureInsets
+typealias TextureScaling = ru.lazyhat.kraftui.foundation.TextureScaling
+typealias TextureStyle = ru.lazyhat.kraftui.foundation.TextureStyle
+
 data class BorderStyle(
     val color: StyleColor,
     val width: Int,
 ) {
     init {
         require(width >= 0) { "border width must be non-negative" }
-    }
-}
-
-sealed interface TextureStyle {
-    data class Resource(
-        val namespace: String,
-        val path: String,
-    ) : TextureStyle {
-        init {
-            require(namespace.isNotBlank()) { "texture namespace must not be blank" }
-            require(path.isNotBlank()) { "texture path must not be blank" }
-            require(!path.startsWith('/')) { "texture path must be relative" }
-        }
     }
 }
 

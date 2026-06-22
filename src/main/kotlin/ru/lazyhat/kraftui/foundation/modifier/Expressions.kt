@@ -3,6 +3,7 @@ package ru.lazyhat.kraftui.foundation.modifier
 import ru.lazyhat.kraftui.foundation.Color
 import ru.lazyhat.kraftui.foundation.HoverState
 import ru.lazyhat.kraftui.foundation.IntSize
+import ru.lazyhat.kraftui.foundation.TextureStyle
 import ru.lazyhat.kraftui.foundation.Value
 import ru.lazyhat.kraftui.foundation.value
 
@@ -214,6 +215,17 @@ fun Modifier.background(color: Color) = background(value(color))
 fun Modifier.background(color: Value<Color>) = then(BackgroundModifier(color))
 
 fun Modifier.findBackground() = find<BackgroundModifier>()
+
+//
+//
+
+data class TextureModifier(
+    val texture: TextureStyle,
+) : Modifier.Element
+
+fun Modifier.texture(texture: TextureStyle): Modifier = then(TextureModifier(texture))
+
+fun Modifier.findTexture() = find<TextureModifier>()
 
 //
 //

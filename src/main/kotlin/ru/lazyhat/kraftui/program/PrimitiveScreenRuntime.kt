@@ -125,6 +125,9 @@ private fun PrimitiveRenderOp.render(
                 texture.height,
             )
         }
+        is PrimitiveRenderOp.DrawTextureRegion -> {
+            backend.drawTextureRegion(x + ox, y + oy, width, height, region, scaling)
+        }
     }
 }
 

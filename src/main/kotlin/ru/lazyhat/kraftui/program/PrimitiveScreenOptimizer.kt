@@ -642,4 +642,5 @@ private fun PrimitiveRenderOp.shifted(
         PrimitiveRenderOp.PopClip -> this
         is PrimitiveRenderOp.DrawCodeEditor -> copy(x = x + dx, y = y + dy)
         is PrimitiveRenderOp.DrawBakedTexture -> copy(x = x + dx, y = y + dy)
+        is PrimitiveRenderOp.DrawTextureRegion -> copy(x = x + dx, y = y + dy)
     }

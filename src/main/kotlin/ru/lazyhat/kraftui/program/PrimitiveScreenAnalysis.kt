@@ -186,6 +186,9 @@ private fun MutableList<PrimitiveProgramDiagnostic>.analyzeRenderInstruction(
                 )
             }
         }
+        is PrimitiveRenderOp.DrawTextureRegion -> {
+            requireValidRenderBounds(instruction.path, op.width, op.height)
+        }
     }
 }
 

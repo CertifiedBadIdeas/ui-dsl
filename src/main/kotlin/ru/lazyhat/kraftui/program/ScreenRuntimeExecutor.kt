@@ -216,6 +216,11 @@ class ScreenRuntimeExecutor<Action>(
                         backend.drawTerminalSurface(op.x + ox, op.y + oy, op.snapshot.value)
                     }
 
+                    is RenderOp.DrawTextureRegion -> {
+                        if (!currentVisible) continue
+                        backend.drawTextureRegion(op.x + ox, op.y + oy, op.width, op.height, op.region, op.scaling)
+                    }
+
                     is RenderOp.DrawCanvas -> {
                         if (!currentVisible) continue
                         canvasScope.bind(backend, op.x + ox, op.y + oy, op.width, op.height)

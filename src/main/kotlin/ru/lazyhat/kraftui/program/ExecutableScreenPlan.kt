@@ -104,6 +104,7 @@ val OptimizedRenderOp.canUseStaticRenderCommandCache: Boolean
             when (source) {
                 is RenderOp.FillRect,
                 is RenderOp.DrawTerminalSurface,
+                is RenderOp.DrawTextureRegion,
                 is RenderOp.PushClip,
                 RenderOp.PopClip,
                 -> true

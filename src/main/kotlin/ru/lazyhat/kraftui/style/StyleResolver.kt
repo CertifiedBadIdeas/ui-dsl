@@ -9,6 +9,7 @@ import ru.lazyhat.kraftui.foundation.modifier.padding
 import ru.lazyhat.kraftui.foundation.modifier.textAlign
 import ru.lazyhat.kraftui.foundation.modifier.textFlow
 import ru.lazyhat.kraftui.foundation.modifier.textOverflow
+import ru.lazyhat.kraftui.foundation.modifier.texture
 import ru.lazyhat.kraftui.styled.StyledUiElement
 import ru.lazyhat.kraftui.styled.StyledUiRoot
 
@@ -60,7 +61,7 @@ private fun StyledUiElement.MetricCard.resolveMetricCard(
     return UiElement.Box(
         modifier =
             modifier
-                .background(surface.fill.asValue())
+                .surface(surface)
                 .padding(
                     surface.padding.left,
                     surface.padding.top,
@@ -94,3 +95,7 @@ private fun Modifier.textStyle(style: TextStyle): Modifier =
         .textOverflow(style.overflow)
         .textFlow(lineHeight = style.lineHeight)
 
+private fun Modifier.surface(style: SurfaceStyle): Modifier {
+    val base = background(style.fill.asValue())
+    return style.texture?.let { base.texture(it) } ?: base
+}

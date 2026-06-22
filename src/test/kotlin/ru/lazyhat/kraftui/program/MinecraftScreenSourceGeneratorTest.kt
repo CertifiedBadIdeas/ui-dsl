@@ -77,6 +77,8 @@ class MinecraftScreenSourceGeneratorTest {
         assertFalse("GeneratedValueExpression" in generated.source)
         assertFalse("RenderOp" in generated.source)
         assertFalse("Create" in generated.source)
+        assertFalse("ResourceLocation" in generated.source)
+        assertFalse("drawTextureRegion" in generated.source)
     }
 
     @Test
@@ -375,8 +377,58 @@ class MinecraftScreenSourceGeneratorTest {
                 generated.source,
         )
         assertTrue("graphics.blit(baked_0ResourceName, 4 + screenOriginX, 5 + screenOriginY, 0.0f, 0.0f, 2, 1, 2, 1)" in generated.source)
+        assertFalse("drawTextureRegion" in generated.source)
         assertEquals("assets/testmod/textures/gui/generated/baked_0.png", generated.assets.single().path)
         assertEquals(0x89.toByte(), generated.assets.single().bytes.first())
+    }
+
+    @Test
+    fun minecraftSourceDrawsExternalTextureRegionsWithoutCopyingAssets() {
+        val primitive =
+            PrimitiveScreenProgram(
+                renderInstructions =
+                    listOf(
+                        PrimitiveRenderInstruction(
+                            path = "create-panel",
+                            visible = null,
+                            origin = null,
+                            op =
+                                PrimitiveRenderOp.DrawTextureRegion(
+                                    x = 4,
+                                    y = 5,
+                                    width = 32,
+                                    height = 12,
+                                    region =
+                                        PrimitiveTextureRegion(
+                                            namespace = "testui",
+                                            path = "textures/gui/value_settings.png",
+                                            atlasWidth = 256,
+                                            atlasHeight = 256,
+                                            sourceX = 0,
+                                            sourceY = 24,
+                                            sourceWidth = 16,
+                                            sourceHeight = 3,
+                                        ),
+                                    scaling = PrimitiveTextureScaling.Tile,
+                                ),
+                        ),
+                    ),
+                inputInstructions = emptyList(),
+            )
+
+        val generated =
+            primitive.generateMinecraftScreenSource(
+                packageName = "ru.lazyhat.generated",
+                className = "GeneratedMinecraftScreen",
+                stateType = "ScreenState",
+                actionType = "String",
+            )
+
+        assertTrue("ResourceLocation.fromNamespaceAndPath(\"testui\", \"textures/gui/value_settings.png\")" in generated.source)
+        assertTrue("drawTextureRegion(graphics, testui_textures_gui_value_settings_pngResourceName" in generated.source)
+        assertTrue("PrimitiveTextureScaling.Tile" !in generated.source)
+        assertTrue("tile = true" in generated.source)
+        assertEquals(emptyList(), generated.assets)
     }
 
     @Test

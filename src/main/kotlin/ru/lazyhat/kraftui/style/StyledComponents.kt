@@ -14,6 +14,7 @@ import ru.lazyhat.kraftui.foundation.modifier.padding
 import ru.lazyhat.kraftui.foundation.modifier.textAlign
 import ru.lazyhat.kraftui.foundation.modifier.textFlow
 import ru.lazyhat.kraftui.foundation.modifier.textOverflow
+import ru.lazyhat.kraftui.foundation.modifier.texture
 import ru.lazyhat.kraftui.foundation.value
 
 fun <Action> UiScope<Action>.styledPanel(
@@ -25,7 +26,7 @@ fun <Action> UiScope<Action>.styledPanel(
     box(
         modifier =
             modifier
-                .background(style.surface.fill.asValue())
+                .surface(style.surface)
                 .padding(padding.left, padding.top, padding.right, padding.bottom),
         block = block,
     )
@@ -61,7 +62,7 @@ fun <Action> UiScope<Action>.metricCard(
     column(
         modifier =
             modifier
-                .background(panel.surface.fill.asValue())
+                .surface(panel.surface)
                 .padding(
                     panel.surface.padding.left,
                     panel.surface.padding.top,
@@ -92,7 +93,8 @@ fun <Action> UiScope<Action>.styledButton(
         box(
             Modifier
                 .fillMaxSize()
-                .background(style.fillFor(state)),
+                .background(style.fillFor(state))
+                .commonStateTexture(style),
         )
         styledText(
             modifier =
@@ -130,7 +132,8 @@ fun <Action> UiScope<Action>.styledTab(
         box(
             Modifier
                 .fillMaxSize()
-                .background(fill),
+                .background(fill)
+                .commonStateTexture(style),
         )
         styledText(
             modifier =
@@ -155,3 +158,17 @@ private fun Modifier.textStyle(style: TextStyle): Modifier =
     textAlign(style.alignment)
         .textOverflow(style.overflow)
         .textFlow(lineHeight = style.lineHeight)
+
+private fun Modifier.surface(style: SurfaceStyle): Modifier {
+    val base = background(style.fill.asValue())
+    return style.texture?.let { base.texture(it) } ?: base
+}
+
+private fun <S : Enum<S>> Modifier.commonStateTexture(style: ControlStyle<S>): Modifier {
+    val textures = style.states.values.map { it.texture }.distinct()
+    return if (textures.size == 1) {
+        textures.single()?.let { texture(it) } ?: this
+    } else {
+        this
+    }
+}

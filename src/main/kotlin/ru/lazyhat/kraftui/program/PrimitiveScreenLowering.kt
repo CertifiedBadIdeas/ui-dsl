@@ -91,6 +91,15 @@ private fun RenderOp.toPrimitiveRenderOp(): PrimitiveRenderOp =
                 height = height,
                 snapshot = snapshot.generatedExpression.requireGenerated().toPrimitiveValueExpression(),
             )
+        is RenderOp.DrawTextureRegion ->
+            PrimitiveRenderOp.DrawTextureRegion(
+                x = x,
+                y = y,
+                width = width,
+                height = height,
+                region = region,
+                scaling = scaling,
+            )
         is RenderOp.DrawCanvas -> error("DrawCanvas should have been rejected by validateGeneratedProgram")
         is RenderOp.PushClip -> PrimitiveRenderOp.PushClip(x, y, width, height)
         RenderOp.PopClip -> PrimitiveRenderOp.PopClip
@@ -106,6 +115,12 @@ private fun RenderOp.toPrimitiveRenderOp(): PrimitiveRenderOp =
                 fontWidth = fontWidth,
                 fontHeight = fontHeight,
             )
+    }
+
+private fun ru.lazyhat.kraftui.foundation.TextureScaling.toPrimitiveTextureScaling(): PrimitiveTextureScaling =
+    when (this) {
+        ru.lazyhat.kraftui.foundation.TextureScaling.Stretch -> PrimitiveTextureScaling.Stretch
+        ru.lazyhat.kraftui.foundation.TextureScaling.Tile -> PrimitiveTextureScaling.Tile
     }
 
 private fun GeneratedValueExpression?.requireGenerated(): GeneratedValueExpression =

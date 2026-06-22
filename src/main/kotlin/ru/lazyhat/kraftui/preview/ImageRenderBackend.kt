@@ -2,6 +2,8 @@ package ru.lazyhat.kraftui.preview
 
 import ru.lazyhat.kraftui.editor.EditorViewModel
 import ru.lazyhat.kraftui.foundation.Color
+import ru.lazyhat.kraftui.program.PrimitiveTextureRegion
+import ru.lazyhat.kraftui.program.PrimitiveTextureScaling
 import ru.lazyhat.kraftui.program.RenderBackend
 import java.awt.Graphics2D
 import java.awt.Rectangle
@@ -13,6 +15,7 @@ class ImageRenderBackend(
     private val image: BufferedImage,
     private val font: PreviewFont,
     private val textAntialiasing: Boolean = false,
+    private val textureResolver: PreviewTextureResolver = MissingPreviewTextureResolver,
 ) : RenderBackend {
     private val graphics: Graphics2D = image.createGraphics()
     private val clipStack = ArrayDeque<Shape?>()
@@ -55,6 +58,38 @@ class ImageRenderBackend(
         snapshot: Any,
     ) {
         throw UnsupportedOperationException("Terminal surfaces are not supported by image UI previews")
+    }
+
+    override fun drawTextureRegion(
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        region: PrimitiveTextureRegion,
+        scaling: PrimitiveTextureScaling,
+    ) {
+        if (width <= 0 || height <= 0) return
+        val texture = textureResolver.resolve(region)
+        require(region.atlasWidth == texture.width && region.atlasHeight == texture.height) {
+            "Preview texture ${region.namespace}:${region.path} has size ${texture.width}x${texture.height}, " +
+                "but region declares ${region.atlasWidth}x${region.atlasHeight}"
+        }
+        when (scaling) {
+            PrimitiveTextureScaling.Stretch ->
+                graphics.drawImage(
+                    texture,
+                    x,
+                    y,
+                    x + width,
+                    y + height,
+                    region.sourceX,
+                    region.sourceY,
+                    region.sourceX + region.sourceWidth,
+                    region.sourceY + region.sourceHeight,
+                    null,
+                )
+            PrimitiveTextureScaling.Tile -> drawTiledTextureRegion(texture, x, y, width, height, region)
+        }
     }
 
     override fun pushClip(
@@ -103,4 +138,36 @@ class ImageRenderBackend(
 
     private fun Color.toAwtColor(): java.awt.Color =
         java.awt.Color(value.toInt(), true)
+
+    private fun drawTiledTextureRegion(
+        texture: BufferedImage,
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        region: PrimitiveTextureRegion,
+    ) {
+        var dx = 0
+        while (dx < width) {
+            val tileWidth = minOf(region.sourceWidth, width - dx)
+            var dy = 0
+            while (dy < height) {
+                val tileHeight = minOf(region.sourceHeight, height - dy)
+                graphics.drawImage(
+                    texture,
+                    x + dx,
+                    y + dy,
+                    x + dx + tileWidth,
+                    y + dy + tileHeight,
+                    region.sourceX,
+                    region.sourceY,
+                    region.sourceX + tileWidth,
+                    region.sourceY + tileHeight,
+                    null,
+                )
+                dy += tileHeight
+            }
+            dx += tileWidth
+        }
+    }
 }

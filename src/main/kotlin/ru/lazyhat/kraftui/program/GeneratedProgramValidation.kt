@@ -89,6 +89,7 @@ private fun MutableList<GeneratedProgramDiagnostic>.validateRenderOp(
             requireGeneratedValue("$path.color", op.color)
         }
         is RenderOp.DrawTerminalSurface -> requireGeneratedValue("$path.snapshot", op.snapshot)
+        is RenderOp.DrawTextureRegion -> Unit
         is RenderOp.DrawCanvas ->
             add(
                 GeneratedProgramDiagnostic.RuntimeOnlyOperation(

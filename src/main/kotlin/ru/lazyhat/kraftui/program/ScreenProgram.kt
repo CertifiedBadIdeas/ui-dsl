@@ -228,6 +228,15 @@ sealed interface RenderOp {
         val snapshot: Value<Any>,
     ) : RenderOp
 
+    data class DrawTextureRegion(
+        val x: Int,
+        val y: Int,
+        val width: Int,
+        val height: Int,
+        val region: PrimitiveTextureRegion,
+        val scaling: PrimitiveTextureScaling = PrimitiveTextureScaling.Stretch,
+    ) : RenderOp
+
     data class DrawCanvas(
         val x: Int,
         val y: Int,
@@ -289,6 +298,7 @@ val RenderOp.dependencies: UiDependencies
                 value.dynamicDependency(UiDependencies.DynamicValue) +
                     color.dynamicDependency(UiDependencies.DynamicValue)
             is RenderOp.DrawTerminalSurface -> snapshot.dynamicDependency(UiDependencies.DynamicValue)
+            is RenderOp.DrawTextureRegion -> UiDependencies.Static
             is RenderOp.DrawCanvas -> UiDependencies.DynamicValue
             is RenderOp.PushClip -> UiDependencies.Static
             RenderOp.PopClip -> UiDependencies.Static

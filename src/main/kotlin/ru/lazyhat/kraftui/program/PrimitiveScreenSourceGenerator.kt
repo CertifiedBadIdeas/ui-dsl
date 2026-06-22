@@ -157,6 +157,16 @@ private fun StringBuilder.appendPrimitiveRenderOp(
                 "${indent}target.drawBakedTexture(${op.x}$ox, ${op.y}$oy, ${op.width}, ${op.height}, ${op.textureId.kotlinIdentifier()}Pixels, ${op.width}, ${op.height})",
             )
         }
+        is PrimitiveRenderOp.DrawTextureRegion -> {
+            appendLine("${indent}target.drawTextureRegion(")
+            appendLine("${indent}    ${op.x}$ox,")
+            appendLine("${indent}    ${op.y}$oy,")
+            appendLine("${indent}    ${op.width},")
+            appendLine("${indent}    ${op.height},")
+            appendLine("${indent}    ${op.region.kotlinExpression()},")
+            appendLine("${indent}    ${op.scaling.kotlinExpression()},")
+            appendLine("${indent})")
+        }
     }
 }
 
@@ -329,6 +339,24 @@ private fun TextOverflowPolicy.kotlinExpression(): String =
 
 private fun ru.lazyhat.kraftui.text.TextFlow.kotlinExpression(): String =
     "TextFlow(wrap = $wrap, maxLines = ${maxLines.kotlinNullableInt()}, lineHeight = $lineHeight)"
+
+private fun PrimitiveTextureRegion.kotlinExpression(): String =
+    "PrimitiveTextureRegion(" +
+        "namespace = ${namespace.kotlinLiteral()}, " +
+        "path = ${path.kotlinLiteral()}, " +
+        "atlasWidth = $atlasWidth, " +
+        "atlasHeight = $atlasHeight, " +
+        "sourceX = $sourceX, " +
+        "sourceY = $sourceY, " +
+        "sourceWidth = $sourceWidth, " +
+        "sourceHeight = $sourceHeight" +
+        ")"
+
+private fun PrimitiveTextureScaling.kotlinExpression(): String =
+    when (this) {
+        PrimitiveTextureScaling.Stretch -> "PrimitiveTextureScaling.Stretch"
+        PrimitiveTextureScaling.Tile -> "PrimitiveTextureScaling.Tile"
+    }
 
 private fun Int?.kotlinNullableInt(): String = this?.toString() ?: "null"
 

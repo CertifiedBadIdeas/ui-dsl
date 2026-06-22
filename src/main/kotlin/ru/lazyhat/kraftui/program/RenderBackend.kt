@@ -44,6 +44,17 @@ interface RenderBackend {
         }
     }
 
+    fun drawTextureRegion(
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        region: PrimitiveTextureRegion,
+        scaling: PrimitiveTextureScaling,
+    ) {
+        throw UnsupportedOperationException("External texture regions are not supported by this render backend")
+    }
+
     fun drawTerminalSurface(
         x: Int,
         y: Int,

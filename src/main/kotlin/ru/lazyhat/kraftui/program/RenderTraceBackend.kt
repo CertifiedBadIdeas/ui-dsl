@@ -43,6 +43,15 @@ sealed interface RenderTraceCall {
         val fontWidth: Int,
         val fontHeight: Int,
     ) : RenderTraceCall
+
+    data class DrawTextureRegion(
+        val x: Int,
+        val y: Int,
+        val width: Int,
+        val height: Int,
+        val region: PrimitiveTextureRegion,
+        val scaling: PrimitiveTextureScaling,
+    ) : RenderTraceCall
 }
 
 class RenderTraceBackend(
@@ -103,6 +112,17 @@ class RenderTraceBackend(
         fontHeight: Int,
     ) {
         mutableCalls += RenderTraceCall.DrawCodeEditor(x, y, width, height, viewModel, fontWidth, fontHeight)
+    }
+
+    override fun drawTextureRegion(
+        x: Int,
+        y: Int,
+        width: Int,
+        height: Int,
+        region: PrimitiveTextureRegion,
+        scaling: PrimitiveTextureScaling,
+    ) {
+        mutableCalls += RenderTraceCall.DrawTextureRegion(x, y, width, height, region, scaling)
     }
 
     override fun measureText(text: String): Int = textWidth(text)

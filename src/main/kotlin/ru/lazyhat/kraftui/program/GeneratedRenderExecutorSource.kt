@@ -116,6 +116,7 @@ private fun StringBuilder.appendRenderStepBody(
         is RenderOp.FillRect -> appendFillRect(index, step, op, indent)
         is RenderOp.DrawText -> appendDrawText(index, step, indent)
         is RenderOp.DrawTerminalSurface -> appendDrawTerminalSurface(index, step, indent)
+        is RenderOp.DrawTextureRegion -> appendDrawTextureRegion(index, step, indent)
         is RenderOp.DrawCanvas -> appendDrawCanvas(index, step, indent)
         is RenderOp.PushClip -> appendPushClip(index, step, indent)
         RenderOp.PopClip -> appendLine("${indent}backend.popClip()")
@@ -184,6 +185,16 @@ private fun StringBuilder.appendDrawTerminalSurface(
     val opName = "op$index"
     appendLine("${indent}val op$index = step$index.op as RenderOp.DrawTerminalSurface")
     appendLine("${indent}backend.drawTerminalSurface(${step.xExpr(index, opName)}, ${step.yExpr(index, opName)}, op$index.snapshot.value)")
+}
+
+private fun StringBuilder.appendDrawTextureRegion(
+    index: Int,
+    step: ExecutableRenderStep,
+    indent: String,
+) {
+    val opName = "op$index"
+    appendLine("${indent}val op$index = step$index.op as RenderOp.DrawTextureRegion")
+    appendLine("${indent}backend.drawTextureRegion(${step.xExpr(index, opName)}, ${step.yExpr(index, opName)}, op$index.width, op$index.height, op$index.region, op$index.scaling)")
 }
 
 private fun StringBuilder.appendDrawCanvas(
